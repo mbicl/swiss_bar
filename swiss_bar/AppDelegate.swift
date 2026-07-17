@@ -4,20 +4,57 @@
 //
 
 import AppKit
+import Combine
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let permissionManager = AccessibilityPermissionManager()
 
+    private let settings = AppSettings.shared
     private let switcherViewModel = SwitcherViewModel()
     private lazy var overlayController = OverlayController(viewModel: switcherViewModel)
     private let eventTapManager = EventTapManager()
+    private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         eventTapManager.delegate = self
-        eventTapManager.install()
+
+        // Start capturing window AX elements at creation time so windows on other Spaces stay
+        // activatable regardless of whether their Space has been displayed.
+        WindowTracker.shared.start()
+
+        // Emits the current value on subscribe, so this also performs the initial install.
+        settings.$windowSwitcherEnabled
+            .removeDuplicates()
+            .sink { [weak self] enabled in
+                guard let self else { return }
+                if enabled {
+                    eventTapManager.install()
+                } else {
+                    eventTapManager.uninstall()
+                }
+            }
+            .store(in: &cancellables)
 
         permissionManager.onAccessibilityGranted = { [weak self] in
-            self?.eventTapManager.install()
+            guard let self, settings.windowSwitcherEnabled else { return }
+            eventTapManager.install()
+            WindowEnumerator.warmElementCache()
+        }
+
+        // Cache AX elements for the windows visible right now, and again on every Space change -
+        // a window can only be focused later (once it's on a non-visible Space) if we grabbed its
+        // AX element while its Space was displayed.
+        if permissionManager.isAccessibilityTrusted {
+            WindowEnumerator.warmElementCache()
+        }
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task { @MainActor in
+                WindowEnumerator.warmElementCache()
+            }
         }
     }
 

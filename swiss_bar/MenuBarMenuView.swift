@@ -8,6 +8,7 @@ import SwiftUI
 
 struct MenuBarMenuView: View {
     @ObservedObject var permissionManager: AccessibilityPermissionManager
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         if !permissionManager.isAccessibilityTrusted {
@@ -26,6 +27,21 @@ struct MenuBarMenuView: View {
                 permissionManager.openInputMonitoringSettings()
             }
         }
+        if !permissionManager.isScreenRecordingGranted {
+            Button("Grant Screen Recording Access…") {
+                permissionManager.requestScreenRecordingAccess()
+            }
+            Button("Open Screen Recording Settings…") {
+                permissionManager.openScreenRecordingSettings()
+            }
+        }
+        Button("Settings…") {
+            // An accessory (LSUIElement) app isn't frontmost when the menu item is clicked, so
+            // the Settings window would open behind other apps without an explicit activation.
+            NSApp.activate(ignoringOtherApps: true)
+            openSettings()
+        }
+        .keyboardShortcut(",")
         Divider()
         Button("Quit swiss_bar") {
             NSApplication.shared.terminate(nil)

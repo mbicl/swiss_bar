@@ -7,19 +7,50 @@ import AppKit
 import ApplicationServices
 import Combine
 import IOKit.hidsystem
+import os
 
-/// Two separate TCC gates guard global keyboard interception: Accessibility (required for an
-/// active event tap and AX window control) and Input Monitoring (checked as a belt-and-braces
-/// second gate). Polls because there's no notification for TCC grants changing at runtime.
+/// Abstracts the three TCC trust checks so `AccessibilityPermissionManager`'s edge-trigger logic
+/// can be tested without touching real system permission state.
+protocol TrustChecking {
+    func isProcessTrusted() -> Bool
+    func isInputMonitoringGranted() -> Bool
+    func isScreenRecordingGranted() -> Bool
+}
+
+struct RealTrustChecker: TrustChecking {
+    func isProcessTrusted() -> Bool {
+        AXIsProcessTrusted()
+    }
+
+    func isInputMonitoringGranted() -> Bool {
+        IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
+    }
+
+    func isScreenRecordingGranted() -> Bool {
+        CGPreflightScreenCaptureAccess()
+    }
+}
+
+/// Three separate TCC gates guard global keyboard interception and window enumeration:
+/// Accessibility (required for an active event tap and AX window control), Input Monitoring
+/// (checked as a belt-and-braces second gate), and Screen Recording (required to read window
+/// titles for windows on other Spaces via `CGWindowListCopyWindowInfo`, since AX itself only
+/// reports windows on the currently-visible Space). Polls because there's no notification for
+/// TCC grants changing at runtime.
 final class AccessibilityPermissionManager: ObservableObject {
     @Published private(set) var isAccessibilityTrusted = false
     @Published private(set) var isInputMonitoringGranted = false
+    @Published private(set) var isScreenRecordingGranted = false
 
     var onAccessibilityGranted: (() -> Void)?
 
+    private static let logger = Logger(subsystem: "com.MBI.swiss-bar", category: "AccessibilityPermissionManager")
+
+    private let trustChecker: TrustChecking
     private var pollTimer: Timer?
 
-    init() {
+    init(trustChecker: TrustChecking = RealTrustChecker()) {
+        self.trustChecker = trustChecker
         refresh()
         pollTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
             self?.refresh()
@@ -32,8 +63,22 @@ final class AccessibilityPermissionManager: ObservableObject {
 
     func refresh() {
         let wasTrusted = isAccessibilityTrusted
-        isAccessibilityTrusted = AXIsProcessTrusted()
-        isInputMonitoringGranted = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent) == kIOHIDAccessTypeGranted
+        let wasInputMonitoringGranted = isInputMonitoringGranted
+        let wasScreenRecordingGranted = isScreenRecordingGranted
+
+        isAccessibilityTrusted = trustChecker.isProcessTrusted()
+        isInputMonitoringGranted = trustChecker.isInputMonitoringGranted()
+        isScreenRecordingGranted = trustChecker.isScreenRecordingGranted()
+
+        if isAccessibilityTrusted != wasTrusted {
+            Self.logger.notice("Accessibility trust changed: \(wasTrusted) -> \(self.isAccessibilityTrusted)")
+        }
+        if isInputMonitoringGranted != wasInputMonitoringGranted {
+            Self.logger.notice("Input Monitoring grant changed: \(wasInputMonitoringGranted) -> \(self.isInputMonitoringGranted)")
+        }
+        if isScreenRecordingGranted != wasScreenRecordingGranted {
+            Self.logger.notice("Screen Recording grant changed: \(wasScreenRecordingGranted) -> \(self.isScreenRecordingGranted)")
+        }
 
         if isAccessibilityTrusted && !wasTrusted {
             onAccessibilityGranted?()
@@ -49,7 +94,7 @@ final class AccessibilityPermissionManager: ObservableObject {
     /// (`EXC_BAD_ACCESS` inside `AXIsProcessTrustedWithOptions` itself).
     func requestAccessibilityAccess() {
         NSApp.activate(ignoringOtherApps: true)
-        let options: NSDictionary = [kAXTrustedCheckOptionPrompt: true]
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         AXIsProcessTrustedWithOptions(options)
         refresh()
     }
@@ -64,12 +109,25 @@ final class AccessibilityPermissionManager: ObservableObject {
         refresh()
     }
 
+    /// `CGRequestScreenCaptureAccess` triggers the system prompt (or registers the app in Settings
+    /// if already denied once). Unlike the AX/IOHID grants, this one takes effect only after the
+    /// app relaunches, so `refresh()` here won't immediately flip to true post-grant.
+    func requestScreenRecordingAccess() {
+        NSApp.activate(ignoringOtherApps: true)
+        _ = CGRequestScreenCaptureAccess()
+        refresh()
+    }
+
     func openAccessibilitySettings() {
         openSystemSettings(pane: "Privacy_Accessibility")
     }
 
     func openInputMonitoringSettings() {
         openSystemSettings(pane: "Privacy_ListenEvent")
+    }
+
+    func openScreenRecordingSettings() {
+        openSystemSettings(pane: "Privacy_ScreenCapture")
     }
 
     private func openSystemSettings(pane: String) {

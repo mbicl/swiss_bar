@@ -5,6 +5,7 @@
 
 import AppKit
 import CoreGraphics
+import os
 
 protocol EventTapManagerDelegate: AnyObject {
     func switcherDidActivate()
@@ -17,7 +18,18 @@ protocol EventTapManagerDelegate: AnyObject {
 /// Knows nothing about windows or UI - reports intents to `delegate`.
 final class EventTapManager {
 
+    /// What a raw key/flags event means to the switcher, independent of `CGEvent`/`CFMachPort` -
+    /// kept pure and `nonisolated` so it's testable without a real event tap.
+    enum SwitcherIntent: Equatable {
+        case activate
+        case advance(forward: Bool)
+        case commit
+        case cancel
+    }
+
     weak var delegate: EventTapManagerDelegate?
+
+    private static let logger = Logger(subsystem: "com.MBI.swiss-bar", category: "EventTapManager")
 
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
@@ -46,6 +58,7 @@ final class EventTapManager {
             },
             userInfo: refcon
         ) else {
+            Self.logger.warning("Event tap creation failed - Accessibility permission likely not granted yet")
             return false
         }
 
@@ -54,6 +67,7 @@ final class EventTapManager {
         runLoopSource = source
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
+        Self.logger.info("Event tap installed")
         return true
     }
 
@@ -68,46 +82,77 @@ final class EventTapManager {
         isSwitcherActive = false
     }
 
+    /// Pure decision logic: given the current active state and a raw key/flags event, decide what
+    /// the switcher should do. No `CGEvent`/`CFMachPort` dependency - testable in isolation.
+    ///
+    /// - `consume`: whether the event should be swallowed (return `nil` from the tap callback) so
+    ///   the Dock's own switcher never sees it. `flagsChanged` events are never consumed - only
+    ///   `keyDown` can be swallowed without breaking modifier-key tracking system-wide.
+    nonisolated static func decide(
+        eventType: CGEventType,
+        keyCode: CGKeyCode,
+        flags: CGEventFlags,
+        isSwitcherActive: Bool
+    ) -> (intent: SwitcherIntent?, consume: Bool, isSwitcherActive: Bool) {
+        if eventType == .flagsChanged {
+            if isSwitcherActive && !flags.contains(.maskCommand) {
+                return (.commit, false, false)
+            }
+            return (nil, false, isSwitcherActive)
+        }
+
+        guard eventType == .keyDown else {
+            return (nil, false, isSwitcherActive)
+        }
+
+        if isSwitcherActive, keyCode == escKeyCode {
+            return (.cancel, true, false)
+        }
+
+        guard flags.contains(.maskCommand), keyCode == tabKeyCode else {
+            return (nil, false, isSwitcherActive)
+        }
+
+        let forward = !flags.contains(.maskShift)
+        if isSwitcherActive {
+            return (.advance(forward: forward), true, true)
+        } else {
+            return (.activate, true, true)
+        }
+    }
+
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
         if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+            Self.logger.notice("Event tap disabled (timeout or user input) - re-enabling")
             if let tap = eventTap {
                 CGEvent.tapEnable(tap: tap, enable: true)
             }
             return Unmanaged.passUnretained(event)
         }
 
-        if type == .flagsChanged {
-            if isSwitcherActive && !event.flags.contains(.maskCommand) {
-                isSwitcherActive = false
-                delegate?.switcherDidCommit()
-            }
-            return Unmanaged.passUnretained(event)
-        }
-
-        guard type == .keyDown else {
-            return Unmanaged.passUnretained(event)
-        }
-
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-        let flags = event.flags
+        Self.logger.notice("handle: type=\(type.rawValue) keyCode=\(keyCode) flags=\(event.flags.rawValue) isActive=\(self.isSwitcherActive)")
+        let (intent, consume, newIsActive) = Self.decide(
+            eventType: type,
+            keyCode: keyCode,
+            flags: event.flags,
+            isSwitcherActive: isSwitcherActive
+        )
+        isSwitcherActive = newIsActive
 
-        if isSwitcherActive, keyCode == Self.escKeyCode {
-            isSwitcherActive = false
-            delegate?.switcherDidCancel()
-            return nil
-        }
-
-        guard flags.contains(.maskCommand), keyCode == Self.tabKeyCode else {
-            return Unmanaged.passUnretained(event)
-        }
-
-        let forward = !flags.contains(.maskShift)
-        if isSwitcherActive {
-            delegate?.switcherDidAdvance(forward: forward)
-        } else {
-            isSwitcherActive = true
+        switch intent {
+        case .activate:
             delegate?.switcherDidActivate()
+        case .advance(let forward):
+            delegate?.switcherDidAdvance(forward: forward)
+        case .commit:
+            delegate?.switcherDidCommit()
+        case .cancel:
+            delegate?.switcherDidCancel()
+        case nil:
+            break
         }
-        return nil
+
+        return consume ? nil : Unmanaged.passUnretained(event)
     }
 }

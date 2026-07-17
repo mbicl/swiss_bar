@@ -15,5 +15,8 @@ struct swiss_barApp: App {
         MenuBarExtra("swiss_bar", systemImage: "square.stack") {
             MenuBarMenuView(permissionManager: appDelegate.permissionManager)
         }
+        Settings {
+            SettingsView(settings: AppSettings.shared)
+        }
     }
 }
