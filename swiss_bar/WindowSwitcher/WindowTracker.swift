@@ -22,6 +22,7 @@ final class WindowTracker {
 
     private var elements: [CGWindowID: AXUIElement] = [:]
     private var observers: [pid_t: AXObserver] = [:]
+    private var runLoopSources: [pid_t: CFRunLoopSource] = [:]
     private static let logger = Logger(subsystem: "com.MBI.swiss-bar", category: "WindowTracker")
 
     private init() {}
@@ -42,6 +43,16 @@ final class WindowTracker {
         elements[windowID]
     }
 
+    /// Drops cached elements for windows that no longer exist anywhere on the system. Without
+    /// this, closed windows' elements (and their possibly-recycled `CGWindowID`s) linger forever
+    /// and can be preferred over fresher state during activation. No-op if the live ID lookup
+    /// comes back empty (transient Quartz failure), matching `WindowEnumerator`'s cache pruning.
+    func prune() {
+        let liveIDs = WindowEnumerator.allWindowIDs()
+        guard !liveIDs.isEmpty else { return }
+        elements = elements.filter { liveIDs.contains($0.key) }
+    }
+
     @objc private func appLaunched(_ note: Notification) {
         guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
               app.activationPolicy == .regular else { return }
@@ -50,7 +61,12 @@ final class WindowTracker {
 
     @objc private func appTerminated(_ note: Notification) {
         guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
-        observers[app.processIdentifier] = nil
+        let pid = app.processIdentifier
+        if let source = runLoopSources[pid] {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), source, .defaultMode)
+        }
+        runLoopSources[pid] = nil
+        observers[pid] = nil
     }
 
     private func observe(_ app: NSRunningApplication) {
@@ -70,8 +86,10 @@ final class WindowTracker {
         let appElement = AXUIElementCreateApplication(pid)
         let refcon = Unmanaged.passUnretained(self).toOpaque()
         AXObserverAddNotification(observer, appElement, kAXWindowCreatedNotification as CFString, refcon)
-        CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(observer), .defaultMode)
+        let source = AXObserverGetRunLoopSource(observer)
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .defaultMode)
         observers[pid] = observer
+        runLoopSources[pid] = source
 
         // Seed with whatever is AX-visible right now (windows on the current Space) so we don't
         // wait for them to be recreated.

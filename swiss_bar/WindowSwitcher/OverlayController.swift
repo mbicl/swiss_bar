@@ -58,9 +58,11 @@ final class OverlayController {
         }
     }
 
-    private static let tileSpacing: CGFloat = 16
-    private static let rowSpacing: CGFloat = 12
-    private static let outerPadding: CGFloat = 40
+    // Pure constants read by the `nonisolated` panelSize(...) below (which stays testable
+    // without a main-actor context) - nonisolated themselves so that access type-checks.
+    nonisolated private static let tileSpacing: CGFloat = 16
+    nonisolated private static let rowSpacing: CGFloat = 12
+    nonisolated private static let outerPadding: CGFloat = 40
 
     nonisolated static func panelSize(
         style: SwitcherStyle,

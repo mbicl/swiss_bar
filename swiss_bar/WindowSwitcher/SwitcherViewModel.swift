@@ -8,6 +8,9 @@ import Combine
 import CoreGraphics
 import Foundation
 
+/// Main-actor confined: mutated from the event-tap delegate chain (guaranteed main-thread at
+/// runtime, but not statically provable at that call site) and read by SwiftUI.
+@MainActor
 final class SwitcherViewModel: ObservableObject {
     @Published var candidates: [CandidateWindow] = []
     @Published var selectedIndex: Int = 0

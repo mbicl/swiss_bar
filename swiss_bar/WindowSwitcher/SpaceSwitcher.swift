@@ -23,6 +23,7 @@ private typealias CopyDisplayForSpaceFunc = @convention(c) (CGSConnectionID, UIn
 private typealias SetCurrentSpaceFunc = @convention(c) (CGSConnectionID, CFString, UInt64) -> CGError
 private typealias SpaceGetTypeFunc = @convention(c) (CGSConnectionID, UInt64) -> Int32
 private typealias GetActiveSpaceFunc = @convention(c) (CGSConnectionID) -> UInt64
+private typealias DisplayCurrentSpaceFunc = @convention(c) (CGSConnectionID, CFString) -> UInt64
 
 /// Includes all Space types (user, fullscreen, system) - the mask value yabai uses.
 private let kCGSAllSpacesMask: Int32 = 0x7
@@ -42,6 +43,7 @@ private let cgsCopyDisplayForSpace = cgsSymbol("CGSCopyManagedDisplayForSpace", 
 private let cgsSetCurrentSpace = cgsSymbol("CGSManagedDisplaySetCurrentSpace", as: SetCurrentSpaceFunc.self)
 private let cgsSpaceGetType = cgsSymbol("CGSSpaceGetType", as: SpaceGetTypeFunc.self)
 private let cgsGetActiveSpace = cgsSymbol("CGSGetActiveSpace", as: GetActiveSpaceFunc.self)
+private let cgsManagedDisplayGetCurrentSpace = cgsSymbol("CGSManagedDisplayGetCurrentSpace", as: DisplayCurrentSpaceFunc.self)
 
 enum SpaceSwitcher {
 
@@ -61,13 +63,44 @@ enum SpaceSwitcher {
         return getType(mainConnectionID(), spaceID) == kCGSSpaceTypeFullscreen
     }
 
+    /// The Space currently shown on the display that owns `spaceID`'s Space grouping, or nil if
+    /// undeterminable. More accurate than the global `CGSGetActiveSpace` on multi-display setups,
+    /// where each display tracks its own active Space independently - a fullscreen app on one
+    /// display must not affect classification of a switch happening on another display. Falls
+    /// back to `cgsGetActiveSpace` (single-display behavior) if the per-display symbol or the
+    /// owning display can't be resolved.
+    private static func currentSpace(onDisplayOwning spaceID: UInt64, cid: CGSConnectionID) -> UInt64? {
+        guard let copyDisplay = cgsCopyDisplayForSpace,
+              let displayUUID = copyDisplay(cid, spaceID)?.takeRetainedValue(),
+              let getCurrentSpace = cgsManagedDisplayGetCurrentSpace else {
+            return cgsGetActiveSpace?(cid)
+        }
+        return getCurrentSpace(cid, displayUUID)
+    }
+
     /// True if activating `windowID` crosses into or out of a fullscreen Space. Such transitions
     /// must be driven by macOS's native app activation (no CGS switch, no AX raise) - forcing the
     /// display or raising a cross-Space window both composite it onto the wrong Space.
     static func involvesFullscreen(windowID: CGWindowID) -> Bool {
         guard let cid = cgsMainConnectionID?(), let target = spaceID(of: windowID) else { return false }
         if isFullscreen(target) { return true }
-        if let current = cgsGetActiveSpace?(cid), isFullscreen(current) { return true }
+        if let current = currentSpace(onDisplayOwning: target, cid: cid), isFullscreen(current) { return true }
+        return false
+    }
+
+    /// True if `pid`'s app already has a window on the currently active Space. When true, plain
+    /// `NSRunningApplication.activate()` is a no-op for switching to a *different* Space-bound
+    /// window of that app (macOS just keeps showing the current-Space window instead of jumping
+    /// Spaces), so the caller needs a stronger mechanism (SkyLight focus-by-ID) instead.
+    static func hasWindowOnActiveSpace(pid: pid_t) -> Bool {
+        guard let mainConnectionID = cgsMainConnectionID, let getActiveSpace = cgsGetActiveSpace else { return false }
+        let cid = mainConnectionID()
+        let activeSpace = getActiveSpace(cid)
+        guard let axWindows = WindowEnumerator.axWindows(for: pid) else { return false }
+        for axWindow in axWindows {
+            guard let wid = WindowEnumerator.windowID(of: axWindow) else { continue }
+            if spaceID(of: wid) == activeSpace { return true }
+        }
         return false
     }
 
@@ -91,11 +124,11 @@ enum SpaceSwitcher {
         }
 
         let cid = mainConnectionID()
-        let currentSpace = cgsGetActiveSpace?(cid)
+        let currentSpaceID = currentSpace(onDisplayOwning: spaceID, cid: cid)
         let targetFullscreen = isFullscreen(spaceID)
-        let currentFullscreen = currentSpace.map(isFullscreen) ?? false
+        let currentFullscreen = currentSpaceID.map(isFullscreen) ?? false
         if targetFullscreen || currentFullscreen {
-            logger.notice("skip CGS switch (fullscreen involved) target=\(spaceID) fs=\(targetFullscreen) current=\(currentSpace ?? 0) fs=\(currentFullscreen) - using native activation")
+            logger.notice("skip CGS switch (fullscreen involved) target=\(spaceID) fs=\(targetFullscreen) current=\(currentSpaceID ?? 0) fs=\(currentFullscreen) - using native activation")
             return false
         }
 

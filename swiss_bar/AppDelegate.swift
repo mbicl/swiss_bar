@@ -39,6 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self, settings.windowSwitcherEnabled else { return }
             eventTapManager.install()
             WindowEnumerator.warmElementCache()
+            WindowEnumerator.refreshCache()
         }
 
         // Cache AX elements for the windows visible right now, and again on every Space change -
@@ -46,15 +47,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // AX element while its Space was displayed.
         if permissionManager.isAccessibilityTrusted {
             WindowEnumerator.warmElementCache()
+            WindowEnumerator.refreshCache()
         }
-        NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.activeSpaceDidChangeNotification,
-            object: nil,
-            queue: .main
-        ) { _ in
+
+        let center = NSWorkspace.shared.notificationCenter
+        center.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { _ in
             Task { @MainActor in
                 WindowEnumerator.warmElementCache()
+                WindowEnumerator.refreshCache()
+                WindowTracker.shared.prune()
             }
+        }
+        // Keeps the candidate cache from going stale between ⌘Tab presses, so `switcherDidActivate`
+        // never has to run a live (AX-heavy) enumeration on the event-tap callback itself.
+        center.addObserver(forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main) { _ in
+            Task { @MainActor in WindowEnumerator.refreshCache() }
+        }
+        center.addObserver(forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main) { _ in
+            Task { @MainActor in WindowEnumerator.refreshCache() }
         }
     }
 
@@ -65,9 +75,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 extension AppDelegate: EventTapManagerDelegate {
     func switcherDidActivate() {
-        let candidates = WindowEnumerator.enumerate()
+        // Cheap, AX-free re-order of the already-cached list - shows instantly and never risks
+        // blocking the event-tap callback on a live AX enumeration (see WindowEnumerator.refreshCache).
+        let candidates = WindowEnumerator.reorderedCache()
         overlayController.show(with: candidates)
         overlayController.updateSelection(candidates.count > 1 ? 1 : 0)
+
+        // Bring the list up to full accuracy (new/closed windows) in the background; deferred via
+        // Task so it runs after this callback returns, off the tap's synchronous call stack.
+        Task { @MainActor [weak self] in
+            let fresh = WindowEnumerator.refreshCache()
+            guard let self, Self.identityKey(fresh) != Self.identityKey(switcherViewModel.candidates) else { return }
+            switcherViewModel.candidates = fresh
+        }
     }
 
     func switcherDidAdvance(forward: Bool) {
@@ -78,9 +98,17 @@ extension AppDelegate: EventTapManagerDelegate {
         overlayController.hide()
         guard switcherViewModel.candidates.indices.contains(switcherViewModel.selectedIndex) else { return }
         WindowActivator.activate(switcherViewModel.candidates[switcherViewModel.selectedIndex])
+        Task { @MainActor in WindowEnumerator.refreshCache() }
     }
 
     func switcherDidCancel() {
         overlayController.hide()
+        Task { @MainActor in WindowEnumerator.refreshCache() }
+    }
+
+    /// Lightweight identity for change detection between the fast cached list and a fresh
+    /// enumeration - `CandidateWindow` isn't `Equatable` and doesn't need to be just for this.
+    private static func identityKey(_ candidates: [CandidateWindow]) -> [String] {
+        candidates.map { "\($0.pid)|\($0.windowID ?? 0)|\($0.title)" }
     }
 }

@@ -12,6 +12,7 @@ struct EventTapManagerTests {
     private static let tabKeyCode: CGKeyCode = 48
     private static let escKeyCode: CGKeyCode = 53
     private static let unrelatedKeyCode: CGKeyCode = 0 // kVK_ANSI_A
+    private static let qKeyCode: CGKeyCode = 12 // kVK_ANSI_Q
 
     @Test func cmdTabWhileInactiveActivatesAndConsumes() {
         let result = EventTapManager.decide(
@@ -100,6 +101,26 @@ struct EventTapManagerTests {
         )
         #expect(result.intent == nil)
         #expect(result.consume == false)
+    }
+
+    @Test func cmdQWhileActiveIsConsumedWithNoIntent() {
+        // Nothing but Tab/Esc should reach the frontmost app while the HUD is up - otherwise
+        // muscle-memory ⌘Q quits whatever app happens to be frontmost mid-switch.
+        let result = EventTapManager.decide(
+            eventType: .keyDown, keyCode: Self.qKeyCode, flags: .maskCommand, isSwitcherActive: true
+        )
+        #expect(result.intent == nil)
+        #expect(result.consume == true)
+        #expect(result.isSwitcherActive == true)
+    }
+
+    @Test func cmdQWhileInactivePassesThrough() {
+        let result = EventTapManager.decide(
+            eventType: .keyDown, keyCode: Self.qKeyCode, flags: .maskCommand, isSwitcherActive: false
+        )
+        #expect(result.intent == nil)
+        #expect(result.consume == false)
+        #expect(result.isSwitcherActive == false)
     }
 
     @Test func nonKeyEventTypePassesThroughUnchanged() {

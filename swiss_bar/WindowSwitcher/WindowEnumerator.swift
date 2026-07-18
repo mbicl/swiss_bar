@@ -25,6 +25,44 @@ enum WindowEnumerator {
     /// to blind app activation. Pruned against the live Quartz window list on each enumeration.
     private static var axElementCache: [CGWindowID: AXUIElement] = [:]
 
+    /// The last full `enumerate()` result. Kept off the ⌘Tab hot path: `enumerate()` makes a
+    /// synchronous, timeout-bounded AX call per running app, and running that inside the
+    /// event-tap callback risks tripping the tap's own watchdog (`tapDisabledByTimeout`) if a few
+    /// apps are slow to respond, silently leaking the next ⌘Tab to the Dock's switcher. Refreshed
+    /// by `refreshCache()` from latency-insensitive call sites (launch, Space change, app
+    /// launch/termination, switcher dismissal) - never from the tap callback itself.
+    private static var cachedCandidates: [CandidateWindow] = []
+
+    /// The current cached candidate list, without triggering a refresh.
+    static func cached() -> [CandidateWindow] {
+        cachedCandidates
+    }
+
+    /// Runs a full `enumerate()` and stores the result as the new cache. AX-heavy - call only from
+    /// contexts that aren't latency sensitive (never the event-tap callback).
+    @discardableResult
+    static func refreshCache() -> [CandidateWindow] {
+        let result = enumerate()
+        cachedCandidates = result
+        return result
+    }
+
+    /// Re-orders the cached candidates using a fresh, AX-free Quartz z-order pass - cheap enough
+    /// to run synchronously in the event-tap callback, unlike `enumerate()`. Approximate (matches
+    /// by owning pid only, not per-window bounds) since it's just what's shown while the accurate
+    /// `refreshCache()` pass completes in the background; doesn't discover new windows or drop
+    /// closed ones.
+    static func reorderedCache() -> [CandidateWindow] {
+        let onScreen = onScreenWindows()
+        let indexed: [(order: Int, window: CandidateWindow)] = cachedCandidates.map { candidate in
+            guard !candidate.isMinimized, let match = onScreen.first(where: { $0.pid == candidate.pid }) else {
+                return (Int.max, candidate)
+            }
+            return (match.index, candidate)
+        }
+        return indexed.sorted { $0.order < $1.order }.map(\.window)
+    }
+
     /// Ordered front-to-back: on-screen windows first (matching Quartz z-order), then windows on
     /// other Spaces (Screen Recording permission required to see these - see `offSpaceCandidates`),
     /// then minimized windows.
@@ -42,16 +80,21 @@ enum WindowEnumerator {
 
             for axWindow in axWindows {
                 guard axString(axWindow, kAXRoleAttribute) == kAXWindowRole else { continue }
-                let title = axString(axWindow, kAXTitleAttribute) ?? ""
-                guard !title.isEmpty else { continue }
+                let rawTitle = axString(axWindow, kAXTitleAttribute) ?? ""
+                let wid = windowID(of: axWindow)
+                let bounds = axFrame(axWindow)
+                // A real (even legitimately untitled) window always resolves a window ID or a
+                // frame; something with none of those plus an empty title is more likely a
+                // phantom/helper AX element than a window worth showing.
+                guard !rawTitle.isEmpty || wid != nil || bounds != nil else { continue }
+                let title = rawTitle.isEmpty ? (app.localizedName ?? "") : rawTitle
                 let isMinimized = axBool(axWindow, kAXMinimizedAttribute) ?? false
 
-                let wid = windowID(of: axWindow)
                 if let wid {
                     knownIDs.insert(wid)
                     axElementCache[wid] = axWindow
                 }
-                if let bounds = axFrame(axWindow) {
+                if let bounds {
                     knownBounds.append((pid: pid, bounds: bounds))
                 }
 
@@ -70,7 +113,7 @@ enum WindowEnumerator {
                     continue
                 }
 
-                if let match = onScreen.first(where: { $0.pid == pid && boundsMatch($0.bounds, axFrame(axWindow)) }) {
+                if let match = onScreen.first(where: { $0.pid == pid && boundsMatch($0.bounds, bounds) }) {
                     visible.append((order: match.index, window: candidate))
                 } else {
                     // Visible per AX but absent from the on-screen list (e.g. a different Space) - keep, ordered last.
@@ -163,7 +206,15 @@ enum WindowEnumerator {
         )
 
         let all = allWindows()
-        axElementCache = axElementCache.filter { cached in all.contains { $0.windowID == cached.key } }
+        // Prune against IDs alone, not the title-filtered list above: kCGWindowNumber is never
+        // redacted (only kCGWindowName is, absent Screen Recording), so this can't spuriously
+        // wipe the whole AX cache just because Screen Recording isn't granted. Also skip pruning
+        // entirely if the ID set came back empty - that's a transient Quartz failure, not "no
+        // windows exist".
+        let liveIDs = allWindowIDs()
+        if !liveIDs.isEmpty {
+            axElementCache = axElementCache.filter { liveIDs.contains($0.key) }
+        }
 
         var result: [CandidateWindow] = []
         for window in all {
@@ -191,6 +242,22 @@ enum WindowEnumerator {
             ))
         }
         return result
+    }
+
+    /// Every layer-0 window ID across all Spaces, regardless of title visibility. Unlike
+    /// `allWindows()`, doesn't require Screen Recording - `kCGWindowNumber` is never redacted,
+    /// only `kCGWindowName` is - so it's safe to use as the source of truth for cache pruning.
+    static func allWindowIDs() -> Set<CGWindowID> {
+        guard let list = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: AnyObject]] else {
+            return []
+        }
+        var ids: Set<CGWindowID> = []
+        for info in list {
+            guard let layer = info[kCGWindowLayer as String] as? Int, layer == 0,
+                  let windowNumber = info[kCGWindowNumber as String] as? Int else { continue }
+            ids.insert(CGWindowID(windowNumber))
+        }
+        return ids
     }
 
     private static func allWindows() -> [OffScreenWindow] {

@@ -36,6 +36,9 @@ private let slpsPostEventRecordTo: SLPSPostEventRecordToFunc? = {
 /// Space) instead of silently ignoring a programmatic request from a background process.
 private let kCPSUserGenerated: UInt32 = 0x200
 
+/// Main-actor confined: reads `WindowTracker.shared` (itself `@MainActor`) and is only ever
+/// invoked from the main-thread event-tap delegate chain.
+@MainActor
 enum WindowActivator {
 
     private static let logger = Logger(subsystem: "com.MBI.swiss-bar", category: "WindowActivator")
@@ -48,13 +51,22 @@ enum WindowActivator {
         if fullscreen {
             // Crossing into or out of a fullscreen Space: let macOS do it. Both a CGS display
             // switch and an AX raise composite the target window onto the *currently visible*
-            // Space (dragging it on top of the fullscreen app and corrupting its UI). So we only
-            // designate the target window as main (so the right window within a multi-window app
-            // is chosen) and activate the app - macOS then animates the fullscreen transition.
-            if let axElement {
-                AXUIElementSetAttributeValue(axElement, kAXMainAttribute as CFString, kCFBooleanTrue)
+            // Space (dragging it on top of the fullscreen app and corrupting its UI) if done
+            // beforehand - so no AX call happens here until the transition has actually
+            // finished. Trigger the transition, then finish the raise once it lands.
+            let isFrontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier == window.pid
+            if isFrontmost || SpaceSwitcher.hasWindowOnActiveSpace(pid: window.pid) {
+                // Plain activation is a no-op here (app's already frontmost, or already has a
+                // window on the visible Space so macOS won't jump Spaces on its own) - force the
+                // transition the same way off-Space windows are focused: a user-generated
+                // SkyLight focus-by-ID.
+                focusBySkyLight(window)
+            } else {
+                NSRunningApplication(processIdentifier: window.pid)?.activate(options: [])
             }
-            NSRunningApplication(processIdentifier: window.pid)?.activate(options: [])
+            afterSpaceChange {
+                finishFullscreenActivation(window, axElement: axElement)
+            }
             return
         }
 
@@ -86,6 +98,65 @@ enum WindowActivator {
         // then poll for the window to become AX-visible now that we're (hopefully) on its Space.
         focusBySkyLight(window)
         activateAppAndRetryRaise(window)
+    }
+
+    /// Finishes a fullscreen-crossing activation after the Space transition has landed: resolves
+    /// an AX element for the window (it may not have been AX-visible before the transition), then
+    /// un-minimizes/raises/focuses it. Falls back to app activation alone if no element can be
+    /// found - matches the "no AX element" behavior of the normal-window path.
+    private static func finishFullscreenActivation(_ window: CandidateWindow, axElement: AXUIElement?) {
+        let resolved = axElement
+            ?? window.windowID.flatMap { WindowTracker.shared.element(for: $0) }
+            ?? WindowEnumerator.axWindows(for: window.pid).flatMap { matchingAXElement(for: window, in: $0) }
+
+        guard let resolved else {
+            logger.notice("finishFullscreenActivation: no AX element for '\(window.title, privacy: .public)' - app activated only")
+            NSRunningApplication(processIdentifier: window.pid)?.activate(options: [])
+            return
+        }
+
+        if window.isMinimized {
+            AXUIElementSetAttributeValue(resolved, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
+        }
+        AXUIElementSetAttributeValue(resolved, kAXMainAttribute as CFString, kCFBooleanTrue)
+        let appElement = AXUIElementCreateApplication(window.pid)
+        AXUIElementSetMessagingTimeout(appElement, 0.25)
+        AXUIElementSetAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, resolved)
+        AXUIElementPerformAction(resolved, kAXRaiseAction as CFString)
+        NSRunningApplication(processIdentifier: window.pid)?.activate(options: [])
+    }
+
+    /// Runs `body` once the active Space changes (`NSWorkspace.activeSpaceDidChangeNotification`)
+    /// or after `timeout` elapses, whichever comes first - exactly once. Used to defer AX work
+    /// until a fullscreen-crossing transition has actually completed, since neither the
+    /// notification alone (may not fire if the transition doesn't happen) nor a fixed delay alone
+    /// (races the animation) is sufficient by itself.
+    private static func afterSpaceChange(timeout: TimeInterval = 1.0, _ body: @escaping () -> Void) {
+        var completed = false
+        var observer: NSObjectProtocol?
+        let complete = {
+            guard !completed else { return }
+            completed = true
+            if let observer { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
+            body()
+        }
+        observer = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.activeSpaceDidChangeNotification,
+            object: nil,
+            queue: .main
+        ) { _ in complete() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { complete() }
+    }
+
+    /// Matches a `CandidateWindow` against a live AX window list: by window ID when resolvable,
+    /// falling back to title comparison (can miss if the title changed since enumeration).
+    private static func matchingAXElement(for window: CandidateWindow, in axWindows: [AXUIElement]) -> AXUIElement? {
+        axWindows.first { element in
+            if let wid = window.windowID, WindowEnumerator.windowID(of: element) == wid {
+                return true
+            }
+            return WindowEnumerator.axString(element, kAXTitleAttribute) == window.title
+        }
     }
 
     /// Best-effort focus of a specific window by ID (switching Space if needed) via SkyLight.
@@ -134,13 +205,7 @@ enum WindowActivator {
 
     private static func attemptRaise(_ window: CandidateWindow, retriesLeft: Int) {
         if let axWindows = WindowEnumerator.axWindows(for: window.pid) {
-            let match = axWindows.first { element in
-                if let wid = window.windowID, WindowEnumerator.windowID(of: element) == wid {
-                    return true
-                }
-                return WindowEnumerator.axString(element, kAXTitleAttribute) == window.title
-            }
-            if let match {
+            if let match = matchingAXElement(for: window, in: axWindows) {
                 AXUIElementSetAttributeValue(match, kAXMainAttribute as CFString, kCFBooleanTrue)
                 AXUIElementPerformAction(match, kAXRaiseAction as CFString)
                 return

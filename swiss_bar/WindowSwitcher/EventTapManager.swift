@@ -110,7 +110,9 @@ final class EventTapManager {
         }
 
         guard flags.contains(.maskCommand), keyCode == tabKeyCode else {
-            return (nil, false, isSwitcherActive)
+            // While the switcher is active, swallow every other keyDown (⌘Q, ⌘H, typing, ...) so
+            // nothing leaks to the frontmost app while the HUD is up. Inactive: pass through as normal.
+            return (nil, isSwitcherActive, isSwitcherActive)
         }
 
         let forward = !flags.contains(.maskShift)
