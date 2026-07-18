@@ -11,15 +11,15 @@ import ApplicationServices
 @MainActor
 struct WindowEnumeratorTests {
 
-    private func makeCandidate(_ title: String) -> CandidateWindow {
+    private func makeCandidate(_ title: String, windowID: CGWindowID? = nil, isMinimized: Bool = false) -> CandidateWindow {
         CandidateWindow(
             axElement: AXUIElementCreateApplication(0),
-            windowID: nil,
+            windowID: windowID,
             title: title,
             appName: "App",
             appIcon: nil,
             pid: 0,
-            isMinimized: false
+            isMinimized: isMinimized
         )
     }
 
@@ -148,5 +148,51 @@ struct WindowEnumeratorTests {
 
     @Test func mergeWithNoWindowsReturnsEmpty() {
         #expect(WindowEnumerator.merge(visible: [], offSpace: [], minimized: []).isEmpty)
+    }
+
+    // MARK: - orderByMRU
+
+    @Test func orderByMRUOnlyMovesThePromotedWindowOthersKeepRelativeOrder() {
+        let a = makeCandidate("A", windowID: 1)
+        let b = makeCandidate("B", windowID: 2)
+        let c = makeCandidate("C", windowID: 3)
+        // Simulates "C was just promoted to front" - A and B's relative order (A before B) is
+        // unchanged even though their absolute rank shifted.
+        let mruIndex: [CGWindowID: Int] = [3: 0, 1: 1, 2: 2]
+        let result = WindowEnumerator.orderByMRU([a, b, c], mruIndex: mruIndex, unknownRank: mruIndex.count)
+        #expect(result.map(\.title) == ["C", "A", "B"])
+    }
+
+    @Test func orderByMRUUnknownWindowsKeepCacheOrderAfterKnownOnes() {
+        let unknown1 = makeCandidate("unknown1", windowID: 2)
+        let known = makeCandidate("known", windowID: 1)
+        let unknown2 = makeCandidate("unknown2", windowID: 3)
+        let mruIndex: [CGWindowID: Int] = [1: 0]
+        let result = WindowEnumerator.orderByMRU([unknown1, known, unknown2], mruIndex: mruIndex, unknownRank: mruIndex.count)
+        #expect(result.map(\.title) == ["known", "unknown1", "unknown2"])
+    }
+
+    @Test func orderByMRUMinimizedAlwaysSortsLastRegardlessOfRank() {
+        let minimized = makeCandidate("minimized", windowID: 1, isMinimized: true)
+        let visible = makeCandidate("visible", windowID: 2)
+        // minimized has the best possible MRU rank but must still sort after visible windows.
+        let mruIndex: [CGWindowID: Int] = [1: 0]
+        let result = WindowEnumerator.orderByMRU([minimized, visible], mruIndex: mruIndex, unknownRank: mruIndex.count)
+        #expect(result.map(\.title) == ["visible", "minimized"])
+    }
+
+    @Test func orderByMRUCandidateWithNoWindowIDTreatedAsUnknown() {
+        let noID = makeCandidate("noID", windowID: nil)
+        let known = makeCandidate("known", windowID: 1)
+        let mruIndex: [CGWindowID: Int] = [1: 0]
+        let result = WindowEnumerator.orderByMRU([noID, known], mruIndex: mruIndex, unknownRank: mruIndex.count)
+        #expect(result.map(\.title) == ["known", "noID"])
+    }
+
+    @Test func orderByMRUWithEmptyMRUIndexPreservesInputOrder() {
+        let a = makeCandidate("A", windowID: 1)
+        let b = makeCandidate("B", windowID: 2)
+        let result = WindowEnumerator.orderByMRU([a, b], mruIndex: [:], unknownRank: 0)
+        #expect(result.map(\.title) == ["A", "B"])
     }
 }

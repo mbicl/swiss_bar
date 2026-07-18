@@ -47,27 +47,49 @@ enum WindowEnumerator {
         return result
     }
 
-    /// Re-orders the cached candidates using a fresh, AX-free Quartz z-order pass - cheap enough
-    /// to run synchronously in the event-tap callback, unlike `enumerate()`. Approximate (matches
-    /// by owning pid only, not per-window bounds) since it's just what's shown while the accurate
-    /// `refreshCache()` pass completes in the background; doesn't discover new windows or drop
-    /// closed ones.
+    /// Re-orders the cached candidates using `WindowTracker`'s MRU order - just an array lookup,
+    /// cheap enough to run synchronously in the event-tap callback, unlike `enumerate()`. Windows
+    /// with no MRU entry yet keep their existing relative position in the cache (stable sort ties
+    /// on a shared fallback value) rather than triggering a fresh z-order pass; doesn't discover
+    /// new windows or drop closed ones.
     static func reorderedCache() -> [CandidateWindow] {
-        let onScreen = onScreenWindows()
-        let indexed: [(order: Int, window: CandidateWindow)] = cachedCandidates.map { candidate in
-            guard !candidate.isMinimized, let match = onScreen.first(where: { $0.pid == candidate.pid }) else {
-                return (Int.max, candidate)
+        let mruIndex = mruIndexByWindowID()
+        return orderByMRU(cachedCandidates, mruIndex: mruIndex, unknownRank: mruIndex.count)
+    }
+
+    /// Pure ordering step: ranks each candidate by its MRU position when known (0 = most recent -
+    /// only the one window that actually gained focus ever moves), or by `unknownRank` when not
+    /// (kept identical across every MRU-unknown candidate, so Swift's stable sort preserves their
+    /// existing relative order in `candidates`). Minimized candidates always sort last, regardless
+    /// of MRU rank. No AX/Quartz/WindowTracker dependency - testable in isolation.
+    nonisolated static func orderByMRU(
+        _ candidates: [CandidateWindow],
+        mruIndex: [CGWindowID: Int],
+        unknownRank: Int
+    ) -> [CandidateWindow] {
+        let indexed: [(order: Int, window: CandidateWindow)] = candidates.map { candidate in
+            guard !candidate.isMinimized else { return (Int.max, candidate) }
+            if let wid = candidate.windowID, let position = mruIndex[wid] {
+                return (position, candidate)
             }
-            return (match.index, candidate)
+            return (unknownRank, candidate)
         }
         return indexed.sorted { $0.order < $1.order }.map(\.window)
     }
 
-    /// Ordered front-to-back: on-screen windows first (matching Quartz z-order), then windows on
-    /// other Spaces (Screen Recording permission required to see these - see `offSpaceCandidates`),
-    /// then minimized windows.
+    /// `WindowTracker`'s MRU window-ID order as a lookup dictionary (ID -> rank, 0 = most recent).
+    private static func mruIndexByWindowID() -> [CGWindowID: Int] {
+        Dictionary(uniqueKeysWithValues: WindowTracker.shared.mruOrderSnapshot().enumerated().map { ($0.element, $0.offset) })
+    }
+
+    /// Ordered front-to-back: windows with a known focus history (`WindowTracker`'s MRU order)
+    /// first - stable, since only the one window that actually gained focus ever moves - then any
+    /// not yet in that history (freshly launched, before a focus event has landed) ordered by
+    /// Quartz z-order, then windows on other Spaces (Screen Recording permission required to see
+    /// these - see `offSpaceCandidates`), then minimized windows.
     static func enumerate() -> [CandidateWindow] {
         let onScreen = onScreenWindows()
+        let mruIndex = mruIndexByWindowID()
 
         var visible: [(order: Int, window: CandidateWindow)] = []
         var minimized: [CandidateWindow] = []
@@ -83,10 +105,14 @@ enum WindowEnumerator {
                 let rawTitle = axString(axWindow, kAXTitleAttribute) ?? ""
                 let wid = windowID(of: axWindow)
                 let bounds = axFrame(axWindow)
-                // A real (even legitimately untitled) window always resolves a window ID or a
-                // frame; something with none of those plus an empty title is more likely a
-                // phantom/helper AX element than a window worth showing.
-                guard !rawTitle.isEmpty || wid != nil || bounds != nil else { continue }
+                // An untitled window is only shown if it also looks like a real, user-facing
+                // window (resolvable ID + the standard-window subrole real top-level windows
+                // report) - titled windows are trusted as-is. Chromium-based apps (Chrome,
+                // Brave, ...) expose extra internal/phantom AXWindow elements - untitled,
+                // non-standard subrole - only while frontmost; without this guard they show up
+                // as duplicate "Google Chrome"/"Brave Browser" entries via the title fallback
+                // below.
+                guard !rawTitle.isEmpty || (wid != nil && axSubrole(axWindow) == kAXStandardWindowSubrole) else { continue }
                 let title = rawTitle.isEmpty ? (app.localizedName ?? "") : rawTitle
                 let isMinimized = axBool(axWindow, kAXMinimizedAttribute) ?? false
 
@@ -113,8 +139,12 @@ enum WindowEnumerator {
                     continue
                 }
 
-                if let match = onScreen.first(where: { $0.pid == pid && boundsMatch($0.bounds, bounds) }) {
-                    visible.append((order: match.index, window: candidate))
+                if let wid, let mruPosition = mruIndex[wid] {
+                    visible.append((order: mruPosition, window: candidate))
+                } else if let match = onScreen.first(where: { $0.pid == pid && boundsMatch($0.bounds, bounds) }) {
+                    // No focus history yet - fall back to Quartz z-order, ordered after every
+                    // MRU-known window since those reflect actual usage rather than a heuristic.
+                    visible.append((order: mruIndex.count + match.index, window: candidate))
                 } else {
                     // Visible per AX but absent from the on-screen list (e.g. a different Space) - keep, ordered last.
                     visible.append((order: Int.max, window: candidate))
@@ -282,6 +312,7 @@ enum WindowEnumerator {
 
     struct OnScreenWindow {
         let pid: pid_t
+        let windowID: CGWindowID?
         let bounds: CGRect
         let index: Int
     }
@@ -297,9 +328,18 @@ enum WindowEnumerator {
                   let boundsDict = info[kCGWindowBounds as String] as? [String: AnyObject] else { continue }
             var rect = CGRect.zero
             guard CGRectMakeWithDictionaryRepresentation(boundsDict as CFDictionary, &rect) else { continue }
-            result.append(OnScreenWindow(pid: pid_t(ownerPID), bounds: rect, index: index))
+            let wid = (info[kCGWindowNumber as String] as? Int).map { CGWindowID($0) }
+            result.append(OnScreenWindow(pid: pid_t(ownerPID), windowID: wid, bounds: rect, index: index))
         }
         return result
+    }
+
+    /// The current on-screen windows' IDs, front-to-back (index 0 = frontmost). `kCGWindowNumber`
+    /// is never redacted (unlike `kCGWindowName`), so this works without Screen Recording. Used to
+    /// seed `WindowTracker`'s MRU order with a real z-order snapshot at cold start, before any
+    /// focus event has fired.
+    static func onScreenWindowIDsFrontToBack() -> [CGWindowID] {
+        onScreenWindows().compactMap(\.windowID)
     }
 
     nonisolated static func boundsMatch(_ a: CGRect, _ b: CGRect?) -> Bool {
@@ -340,6 +380,10 @@ enum WindowEnumerator {
 
     static func axString(_ element: AXUIElement, _ attribute: String) -> String? {
         axValue(element, attribute) as? String
+    }
+
+    private static func axSubrole(_ element: AXUIElement) -> String? {
+        axString(element, kAXSubroleAttribute)
     }
 
     private static func axBool(_ element: AXUIElement, _ attribute: String) -> Bool? {

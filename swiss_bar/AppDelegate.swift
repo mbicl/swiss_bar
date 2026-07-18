@@ -40,14 +40,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             eventTapManager.install()
             WindowEnumerator.warmElementCache()
             WindowEnumerator.refreshCache()
+            WindowTracker.shared.seedMRU(WindowEnumerator.onScreenWindowIDsFrontToBack())
         }
 
         // Cache AX elements for the windows visible right now, and again on every Space change -
         // a window can only be focused later (once it's on a non-visible Space) if we grabbed its
-        // AX element while its Space was displayed.
+        // AX element while its Space was displayed. Also seed the MRU order with the current
+        // z-order so the very first switcher invocation of a session has a deterministic list
+        // instead of falling back to the ambiguous bounds-matching heuristic.
         if permissionManager.isAccessibilityTrusted {
             WindowEnumerator.warmElementCache()
             WindowEnumerator.refreshCache()
+            WindowTracker.shared.seedMRU(WindowEnumerator.onScreenWindowIDsFrontToBack())
         }
 
         let center = NSWorkspace.shared.notificationCenter
@@ -56,6 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 WindowEnumerator.warmElementCache()
                 WindowEnumerator.refreshCache()
                 WindowTracker.shared.prune()
+                WindowTracker.shared.seedMRU(WindowEnumerator.onScreenWindowIDsFrontToBack())
             }
         }
         // Keeps the candidate cache from going stale between ⌘Tab presses, so `switcherDidActivate`
@@ -81,12 +86,14 @@ extension AppDelegate: EventTapManagerDelegate {
         overlayController.show(with: candidates)
         overlayController.updateSelection(candidates.count > 1 ? 1 : 0)
 
-        // Bring the list up to full accuracy (new/closed windows) in the background; deferred via
-        // Task so it runs after this callback returns, off the tap's synchronous call stack.
-        Task { @MainActor [weak self] in
-            let fresh = WindowEnumerator.refreshCache()
-            guard let self, Self.identityKey(fresh) != Self.identityKey(switcherViewModel.candidates) else { return }
-            switcherViewModel.candidates = fresh
+        // Bring the *cache* up to full accuracy (new/closed windows) in the background, deferred
+        // via Task so it runs after this callback returns, off the tap's synchronous call stack.
+        // Deliberately does NOT touch `switcherViewModel.candidates` here: replacing the on-screen
+        // list while the HUD is already up and the user is mid-Tab is what caused the list to
+        // visibly reshuffle/jump. The list shown is frozen as of activation; refreshed cache state
+        // is picked up on the *next* activation instead.
+        Task { @MainActor in
+            WindowEnumerator.refreshCache()
         }
     }
 
@@ -97,18 +104,16 @@ extension AppDelegate: EventTapManagerDelegate {
     func switcherDidCommit() {
         overlayController.hide()
         guard switcherViewModel.candidates.indices.contains(switcherViewModel.selectedIndex) else { return }
-        WindowActivator.activate(switcherViewModel.candidates[switcherViewModel.selectedIndex])
+        let selected = switcherViewModel.candidates[switcherViewModel.selectedIndex]
+        WindowActivator.activate(selected)
+        if let windowID = selected.windowID {
+            WindowTracker.shared.markFocused(windowID)
+        }
         Task { @MainActor in WindowEnumerator.refreshCache() }
     }
 
     func switcherDidCancel() {
         overlayController.hide()
         Task { @MainActor in WindowEnumerator.refreshCache() }
-    }
-
-    /// Lightweight identity for change detection between the fast cached list and a fresh
-    /// enumeration - `CandidateWindow` isn't `Equatable` and doesn't need to be just for this.
-    private static func identityKey(_ candidates: [CandidateWindow]) -> [String] {
-        candidates.map { "\($0.pid)|\($0.windowID ?? 0)|\($0.title)" }
     }
 }

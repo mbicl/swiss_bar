@@ -126,7 +126,7 @@ enum SpaceSwitcher {
         let cid = mainConnectionID()
         let currentSpaceID = currentSpace(onDisplayOwning: spaceID, cid: cid)
         let targetFullscreen = isFullscreen(spaceID)
-        let currentFullscreen = currentSpaceID.map(isFullscreen) ?? false
+        let currentFullscreen = currentSpaceID.map { isFullscreen($0) } ?? false
         if targetFullscreen || currentFullscreen {
             logger.notice("skip CGS switch (fullscreen involved) target=\(spaceID) fs=\(targetFullscreen) current=\(currentSpaceID ?? 0) fs=\(currentFullscreen) - using native activation")
             return false

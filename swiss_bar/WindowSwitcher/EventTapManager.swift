@@ -35,8 +35,42 @@ final class EventTapManager {
     private var runLoopSource: CFRunLoopSource?
     private var isSwitcherActive = false
 
-    private static let tabKeyCode: CGKeyCode = 48
-    private static let escKeyCode: CGKeyCode = 53
+    // Read only from the `nonisolated` decide(...) below (kept nonisolated for testability
+    // without a real event tap) - nonisolated themselves so that access type-checks.
+    nonisolated private static let tabKeyCode: CGKeyCode = 48
+    nonisolated private static let escKeyCode: CGKeyCode = 53
+    nonisolated private static let leftArrowKeyCode: CGKeyCode = 123
+    nonisolated private static let rightArrowKeyCode: CGKeyCode = 124
+    nonisolated private static let downArrowKeyCode: CGKeyCode = 125
+    nonisolated private static let upArrowKeyCode: CGKeyCode = 126
+
+    private enum ArrowKey {
+        case left, right, up, down
+    }
+
+    nonisolated private static func arrowKey(for keyCode: CGKeyCode) -> ArrowKey? {
+        switch keyCode {
+        case leftArrowKeyCode: return .left
+        case rightArrowKeyCode: return .right
+        case upArrowKeyCode: return .up
+        case downArrowKeyCode: return .down
+        default: return nil
+        }
+    }
+
+    /// Which arrow keys navigate depends on the switcher's visual layout - left/right in the
+    /// horizontal row of tiles, up/down in the vertical list - since those are the only ones that
+    /// correspond to a visible direction in that layout. Returns nil for the other axis's arrows,
+    /// which are still consumed (Step 5's catch-all) but don't move the selection.
+    nonisolated private static func advanceDirection(for arrow: ArrowKey, style: SwitcherStyle) -> Bool? {
+        switch (style, arrow) {
+        case (.horizontal, .left): return false
+        case (.horizontal, .right): return true
+        case (.vertical, .up): return false
+        case (.vertical, .down): return true
+        default: return nil
+        }
+    }
 
     /// Returns false if the tap couldn't be created (e.g. Accessibility not yet granted) - safe to call again later.
     @discardableResult
@@ -92,7 +126,8 @@ final class EventTapManager {
         eventType: CGEventType,
         keyCode: CGKeyCode,
         flags: CGEventFlags,
-        isSwitcherActive: Bool
+        isSwitcherActive: Bool,
+        style: SwitcherStyle = .horizontal
     ) -> (intent: SwitcherIntent?, consume: Bool, isSwitcherActive: Bool) {
         if eventType == .flagsChanged {
             if isSwitcherActive && !flags.contains(.maskCommand) {
@@ -107,6 +142,14 @@ final class EventTapManager {
 
         if isSwitcherActive, keyCode == escKeyCode {
             return (.cancel, true, false)
+        }
+
+        if isSwitcherActive, let arrow = arrowKey(for: keyCode) {
+            if let forward = advanceDirection(for: arrow, style: style) {
+                return (.advance(forward: forward), true, true)
+            }
+            // Wrong-axis arrow for this style: consumed like any other key while active, no-op.
+            return (nil, true, true)
         }
 
         guard flags.contains(.maskCommand), keyCode == tabKeyCode else {
@@ -138,7 +181,8 @@ final class EventTapManager {
             eventType: type,
             keyCode: keyCode,
             flags: event.flags,
-            isSwitcherActive: isSwitcherActive
+            isSwitcherActive: isSwitcherActive,
+            style: SwitcherStyle.current
         )
         isSwitcherActive = newIsActive
 
