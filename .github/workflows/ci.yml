@@ -17,10 +17,13 @@ jobs:
 
       - name: Build
         run: |
-          xcodebuild -project swiss_bar.xcodeproj -scheme swiss_bar -configuration Debug build
+          xcodebuild -project swiss_bar.xcodeproj -scheme swiss_bar -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO \
+            build
 
       - name: Run unit tests
         run: |
           xcodebuild test -project swiss_bar.xcodeproj -scheme swiss_bar \
             -destination 'platform=macOS' \
-            -only-testing:swiss_barTests
+            -only-testing:swiss_barTests \
+            CODE_SIGNING_ALLOWED=NO
