@@ -14,9 +14,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 See `ROADMAP.md` for feature-by-feature build status. Features are being implemented one at a time.
 
-The app is `LSUIElement` (agent app: no Dock icon, no app menu bar) and runs unsandboxed (`ENABLE_APP_SANDBOX` removed from the `swiss_bar` target) — several planned features (window switcher, keyboard cleaning mode) need a global `CGEventTap` and cross-process Accessibility (`AXUIElement`) control that don't work under App Sandbox. Distribution is Developer ID + notarization, not the Mac App Store.
-
-There is no git repository initialized in this directory yet.
+The app is `LSUIElement` (agent app: no Dock icon, no app menu bar) and runs unsandboxed (`ENABLE_APP_SANDBOX` removed from the `swiss_bar` target) — several planned features (window switcher, keyboard cleaning mode) need a global `CGEventTap` and cross-process Accessibility (`AXUIElement`) control that don't work under App Sandbox. Distribution is via GitHub Releases, signed with a self-signed certificate (not an Apple Developer ID) — not the Mac App Store, not notarized. See `INSTALL.md` and `ROADMAP.md`'s Release section for why and how.
 
 ## Structure
 

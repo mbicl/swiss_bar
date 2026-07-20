@@ -1,1 +1,11 @@
 .env
+
+# Xcode user-specific state (window layout, breakpoints) - not shareable, changes on every launch
+xcuserdata/
+
+# Release signing material - never commit
+certs/
+*.p12
+
+# Local release build output
+build/

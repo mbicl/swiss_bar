@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  release:
+    runs-on: macos-26
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select newest Xcode 26
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)/Contents/Developer"
+
+      - name: Run unit tests
+        run: |
+          xcodebuild test -project swiss_bar.xcodeproj -scheme swiss_bar \
+            -destination 'platform=macOS' \
+            -only-testing:swiss_barTests
+
+      - name: Import signing certificate
+        env:
+          SIGNING_CERT_P12_BASE64: ${{ secrets.SIGNING_CERT_P12_BASE64 }}
+          SIGNING_CERT_P12_PASSWORD: ${{ secrets.SIGNING_CERT_P12_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 24)"
+          CERT_PATH="$RUNNER_TEMP/swiss_bar_signing.p12"
+
+          echo "$SIGNING_CERT_P12_BASE64" | base64 --decode -o "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -k "$KEYCHAIN_PATH" -P "$SIGNING_CERT_P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          EXISTING_KEYCHAINS="$(security list-keychains -d user | sed 's/"//g')"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $EXISTING_KEYCHAINS
+
+          rm -f "$CERT_PATH"
+
+      - name: Build, sign, and package
+        run: scripts/build-release.sh "${GITHUB_REF_NAME#v}"
+
+      - name: Write release notes
+        run: |
+          cat > "$RUNNER_TEMP/release-notes.md" <<'EOF'
+          This build is signed with swiss_bar's self-signed release certificate, not an Apple
+          Developer ID - macOS Gatekeeper will warn that it's from an "unidentified developer."
+          See [INSTALL.md](https://github.com/mbicl/swiss_bar/blob/main/INSTALL.md) for why, and
+          the two ways to open it anyway.
+
+          Quick version:
+          1. Open the DMG, drag `swiss_bar.app` to `/Applications`.
+          2. Run `xattr -cr /Applications/swiss_bar.app` in Terminal, **or** try to open the app
+             and then approve it via System Settings -> Privacy & Security -> "Open Anyway".
+          3. Grant Accessibility (and Input Monitoring, if prompted) when asked - required for the
+             window switcher and keyboard features.
+
+          Every release is signed with the same certificate, so these permission grants persist
+          across future updates.
+          EOF
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" \
+            "build/swiss_bar-$VERSION.dmg" \
+            "build/swiss_bar-$VERSION.zip" \
+            --title "swiss_bar $VERSION" \
+            --notes-file "$RUNNER_TEMP/release-notes.md"

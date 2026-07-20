@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select newest Xcode 26
+        run: sudo xcode-select -s "$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)/Contents/Developer"
+
+      - name: Build
+        run: |
+          xcodebuild -project swiss_bar.xcodeproj -scheme swiss_bar -configuration Debug build
+
+      - name: Run unit tests
+        run: |
+          xcodebuild test -project swiss_bar.xcodeproj -scheme swiss_bar \
+            -destination 'platform=macOS' \
+            -only-testing:swiss_barTests
