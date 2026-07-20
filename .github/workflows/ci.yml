@@ -23,7 +23,12 @@ jobs:
 
       - name: Run unit tests
         run: |
+          # xcodebuild test runs on the actual host OS, which can trail the project's
+          # MACOSX_DEPLOYMENT_TARGET by a runner point-release; relax the target for this
+          # test invocation only so it can launch - the real build/release target is untouched.
+          RUNNER_OS_VERSION="$(sw_vers -productVersion | cut -d. -f1,2)"
           xcodebuild test -project swiss_bar.xcodeproj -scheme swiss_bar \
             -destination 'platform=macOS' \
             -only-testing:swiss_barTests \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            MACOSX_DEPLOYMENT_TARGET="$RUNNER_OS_VERSION"

@@ -19,9 +19,13 @@ jobs:
 
       - name: Run unit tests
         run: |
+          # See ci.yml for why this override is needed - test execution requires the
+          # deployment target to not exceed the runner's actual host OS.
+          RUNNER_OS_VERSION="$(sw_vers -productVersion | cut -d. -f1,2)"
           xcodebuild test -project swiss_bar.xcodeproj -scheme swiss_bar \
             -destination 'platform=macOS' \
-            -only-testing:swiss_barTests
+            -only-testing:swiss_barTests \
+            MACOSX_DEPLOYMENT_TARGET="$RUNNER_OS_VERSION"
 
       - name: Import signing certificate
         env:
