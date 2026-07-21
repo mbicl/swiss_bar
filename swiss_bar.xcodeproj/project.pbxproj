@@ -405,8 +405,9 @@
 					"@executable_path/../Frameworks",
 				);
 				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.MBI.swiss-bar";
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.MBI.swiss-bar-dev";
+				PRODUCT_MODULE_NAME = swiss_bar;
+				PRODUCT_NAME = "swiss_bar_dev";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -461,7 +462,7 @@
 				SWIFT_EMIT_LOC_STRINGS = NO;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/swiss_bar.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/swiss_bar";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/swiss_bar_dev.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/swiss_bar_dev";
 			};
 			name = Debug;
 		};
