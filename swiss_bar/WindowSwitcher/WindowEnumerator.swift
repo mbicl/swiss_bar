@@ -38,11 +38,40 @@ enum WindowEnumerator {
         cachedCandidates
     }
 
+    /// Re-adds candidates from the previous cache that this enumeration didn't produce but that
+    /// Quartz says still exist. AX visibility is not a statement about existence: inside a
+    /// fullscreen Space `kAXWindowsAttribute` reports only the fullscreen app's own window, so an
+    /// enumeration taken there can legitimately return a single candidate on a system with a
+    /// dozen windows - and since `refreshCache` runs on entering a Space, that one-entry list
+    /// would otherwise stick until the next Space change. Anything still in `liveIDs` is known to
+    /// exist, so keep it. Candidates with no window ID can't be verified and are not carried
+    /// over. Pure - testable in isolation.
+    nonisolated static func carryingOverStillLive(
+        fresh: [CandidateWindow],
+        previous: [CandidateWindow],
+        liveIDs: Set<CGWindowID>
+    ) -> [CandidateWindow] {
+        guard !liveIDs.isEmpty else { return fresh }
+        let freshIDs = Set(fresh.compactMap(\.windowID))
+        let carried = previous.filter { candidate in
+            guard let wid = candidate.windowID else { return false }
+            return !freshIDs.contains(wid) && liveIDs.contains(wid)
+        }
+        guard !carried.isEmpty else { return fresh }
+        // Spliced before the freshly-seen minimized windows so merge()'s ordering contract
+        // (minimized last) still holds for `cached()` readers; `reorderedCache()` re-sorts anyway.
+        return fresh.filter { !$0.isMinimized } + carried + fresh.filter(\.isMinimized)
+    }
+
     /// Runs a full `enumerate()` and stores the result as the new cache. AX-heavy - call only from
     /// contexts that aren't latency sensitive (never the event-tap callback).
     @discardableResult
     static func refreshCache() -> [CandidateWindow] {
-        let result = enumerate()
+        let fresh = enumerate()
+        let result = carryingOverStillLive(fresh: fresh, previous: cachedCandidates, liveIDs: allWindowIDs())
+        if result.count != fresh.count {
+            logger.notice("refreshCache: carried over \(result.count - fresh.count) still-live windows AX didn't report")
+        }
         cachedCandidates = result
         return result
     }
@@ -85,20 +114,23 @@ enum WindowEnumerator {
     /// Ordered front-to-back: windows with a known focus history (`WindowTracker`'s MRU order)
     /// first - stable, since only the one window that actually gained focus ever moves - then any
     /// not yet in that history (freshly launched, before a focus event has landed) ordered by
-    /// Quartz z-order, then windows on other Spaces (Screen Recording permission required to see
-    /// these - see `offSpaceCandidates`), then minimized windows.
+    /// Quartz z-order, then windows on other Spaces (works without Screen Recording - see
+    /// `offSpaceCandidates`), then minimized windows.
     static func enumerate() -> [CandidateWindow] {
         let onScreen = onScreenWindows()
         let mruIndex = mruIndexByWindowID()
 
         var visible: [(order: Int, window: CandidateWindow)] = []
         var minimized: [CandidateWindow] = []
-        var knownIDs: Set<CGWindowID> = []
-        var knownBounds: [(pid: pid_t, bounds: CGRect)] = []
+        var axIdentities: [AXWindowIdentity] = []
 
         for app in NSWorkspace.shared.runningApplications where app.activationPolicy == .regular {
             let pid = app.processIdentifier
-            guard let axWindows = axWindows(for: pid) else { continue }
+            guard let axWindows = axWindows(for: pid) else {
+                logger.debug("ax windows for \(app.localizedName ?? "?", privacy: .public): unavailable")
+                continue
+            }
+            logger.debug("ax windows for \(app.localizedName ?? "?", privacy: .public): \(axWindows.count)")
 
             for axWindow in axWindows {
                 guard axString(axWindow, kAXRoleAttribute) == kAXWindowRole else { continue }
@@ -117,12 +149,9 @@ enum WindowEnumerator {
                 let isMinimized = axBool(axWindow, kAXMinimizedAttribute) ?? false
 
                 if let wid {
-                    knownIDs.insert(wid)
                     axElementCache[wid] = axWindow
                 }
-                if let bounds {
-                    knownBounds.append((pid: pid, bounds: bounds))
-                }
+                axIdentities.append(AXWindowIdentity(pid: pid, windowID: wid, bounds: bounds))
 
                 let candidate = CandidateWindow(
                     axElement: axWindow,
@@ -152,10 +181,11 @@ enum WindowEnumerator {
             }
         }
 
-        let offSpace = offSpaceCandidates(knownIDs: knownIDs, knownBounds: knownBounds)
+        let keys = dedupKeys(for: axIdentities)
+        let offSpace = offSpaceCandidates(knownIDs: keys.ids, knownBounds: keys.bounds)
 
         let result = merge(visible: visible, offSpace: offSpace, minimized: minimized)
-        logger.notice("enumerate() -> \(visible.count) visible, \(offSpace.count) off-space, \(minimized.count) minimized, \(result.count) total")
+        logger.notice("enumerate() -> \(visible.count) visible, \(offSpace.count) off-space, \(minimized.count) minimized, \(result.count) total (screenRecording=\(CGPreflightScreenCaptureAccess()))")
         let dump = result.enumerated().map { "[\($0.offset)] \($0.element.appName)|\($0.element.title.prefix(24))|wid=\($0.element.windowID ?? 0)" }.joined(separator: "  ")
         logger.notice("list: \(dump, privacy: .public)")
         return result
@@ -200,9 +230,41 @@ enum WindowEnumerator {
         return orderedVisible + offSpace + minimized
     }
 
+    /// One AX-enumerated window, reduced to what Quartz dedup needs. Pure value type so the key
+    /// derivation below is testable without AX.
+    struct AXWindowIdentity {
+        let pid: pid_t
+        let windowID: CGWindowID?
+        let bounds: CGRect?
+    }
+
+    /// Derives the two dedup keys `isDuplicate` matches against. Window IDs are exact, so every
+    /// AX window that resolved one contributes an ID. Bounds are only an *approximate* identity
+    /// and are recorded exclusively for windows whose ID couldn't be resolved: every fullscreen
+    /// window of one app occupies the exact same full-display rect, so recording bounds for
+    /// ID-resolved windows too made each fullscreen sibling arriving from Quartz look like a
+    /// duplicate of the first one and vanish from the list. Pure - testable in isolation.
+    nonisolated static func dedupKeys(
+        for windows: [AXWindowIdentity]
+    ) -> (ids: Set<CGWindowID>, bounds: [(pid: pid_t, bounds: CGRect)]) {
+        var ids: Set<CGWindowID> = []
+        var bounds: [(pid: pid_t, bounds: CGRect)] = []
+        for window in windows {
+            if let wid = window.windowID {
+                ids.insert(wid)
+            } else if let rect = window.bounds {
+                bounds.append((pid: window.pid, bounds: rect))
+            }
+        }
+        return (ids, bounds)
+    }
+
     /// True if a Quartz-listed window is already represented among the AX-enumerated windows.
     /// Primary key is the window ID (exact); bounds matching is the fallback for elements whose
-    /// ID couldn't be resolved. Pure - testable in isolation.
+    /// ID couldn't be resolved - `knownBounds` (built by `dedupKeys`) only ever contains such
+    /// elements, which is what makes matching on pid + frame safe despite windows of the same app
+    /// often sharing an identical frame (e.g. multiple fullscreen windows). Pure - testable in
+    /// isolation.
     nonisolated static func isDuplicate(
         windowID: CGWindowID,
         pid: pid_t,
@@ -218,15 +280,18 @@ enum WindowEnumerator {
     struct OffScreenWindow {
         let pid: pid_t
         let windowID: CGWindowID
+        /// May be empty - `kCGWindowName` is redacted for other processes without Screen
+        /// Recording. Resolved from a held AX element (or the app name) by `offSpaceCandidates`.
         let title: String
         let bounds: CGRect
     }
 
     /// `kAXWindowsAttribute` only reports windows on the currently-visible Space(s) - windows
     /// parked on other Spaces are invisible to Accessibility until their owning app is activated.
-    /// `CGWindowListCopyWindowInfo(.optionAll)` is Space-agnostic and fills that gap, but reading
-    /// `kCGWindowName` for windows owned by other processes requires Screen Recording permission -
-    /// without it this silently returns an empty list (graceful degradation to AX-only behavior).
+    /// `CGWindowListCopyWindowInfo(.optionAll)` is Space-agnostic and fills that gap. Titles come
+    /// from `kCGWindowName` when available, or from a held AX element (`WindowTracker`/
+    /// `axElementCache`) otherwise - so this works without Screen Recording; that grant only
+    /// improves title fidelity for windows we've never held an element for.
     private static func offSpaceCandidates(
         knownIDs: Set<CGWindowID>,
         knownBounds: [(pid: pid_t, bounds: CGRect)]
@@ -247,6 +312,7 @@ enum WindowEnumerator {
         }
 
         var result: [CandidateWindow] = []
+        var skippedUntitled = 0
         for window in all {
             guard let app = runningApps[window.pid], app.activationPolicy == .regular else { continue }
             guard !isDuplicate(
@@ -258,19 +324,38 @@ enum WindowEnumerator {
             ) else { continue }
 
             // Prefer the tracker (captures elements at window-creation time, so it has off-Space
-            // windows too); fall back to the enumeration-time cache.
+            // windows too); fall back to the enumeration-time cache. A held element keeps
+            // answering kAXTitleAttribute after its window leaves the current Space, which is
+            // what makes titles work here without Screen Recording.
             let cachedElement = WindowTracker.shared.element(for: window.windowID) ?? axElementCache[window.windowID]
-            logger.debug("off-space window: \(app.localizedName ?? "?", privacy: .public) title=\(window.title, privacy: .public) cachedAX=\(cachedElement != nil)")
+            let axTitle = cachedElement.flatMap { axString($0, kAXTitleAttribute) } ?? ""
+            let resolvedTitle = !window.title.isEmpty ? window.title : axTitle
+
+            // The Quartz-side equivalent of the AX path's Chromium ghost-window guard above: an
+            // untitled window is only trusted when something vouches for it being a real
+            // top-level window - here, a held AX element reporting the standard-window subrole.
+            // A layer-0 window we've never held an element for and that has no title anywhere is
+            // far more likely an app's internal host window than something the user can switch to.
+            if resolvedTitle.isEmpty {
+                guard let cachedElement, axSubrole(cachedElement) == kAXStandardWindowSubrole else {
+                    skippedUntitled += 1
+                    continue
+                }
+            }
+
+            let isMinimized = cachedElement.flatMap { axBool($0, kAXMinimizedAttribute) } ?? false
+            logger.debug("off-space window: \(app.localizedName ?? "?", privacy: .public) title=\(resolvedTitle, privacy: .public) cachedAX=\(cachedElement != nil)")
             result.append(CandidateWindow(
                 axElement: cachedElement,
                 windowID: window.windowID,
-                title: window.title,
+                title: resolvedTitle.isEmpty ? (app.localizedName ?? "") : resolvedTitle,
                 appName: app.localizedName ?? "",
                 appIcon: app.icon,
                 pid: window.pid,
-                isMinimized: false
+                isMinimized: isMinimized
             ))
         }
+        logger.notice("offSpace: \(all.count) quartz layer-0 -> \(result.count) candidates (\(skippedUntitled) untitled + unvouched)")
         return result
     }
 
@@ -290,6 +375,12 @@ enum WindowEnumerator {
         return ids
     }
 
+    /// Minimum edge length for a Quartz window to be treated as user-facing. Untitled layer-0
+    /// windows used to be filtered out implicitly by the non-empty-title requirement below; now
+    /// that untitled windows are kept (they're the only way to see other Spaces without Screen
+    /// Recording), tiny helper/host windows need an explicit filter.
+    private static let minimumWindowEdge: CGFloat = 40
+
     private static func allWindows() -> [OffScreenWindow] {
         guard let list = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [[String: AnyObject]] else {
             return []
@@ -299,10 +390,19 @@ enum WindowEnumerator {
             guard let layer = info[kCGWindowLayer as String] as? Int, layer == 0,
                   let ownerPID = info[kCGWindowOwnerPID as String] as? Int,
                   let windowNumber = info[kCGWindowNumber as String] as? Int,
-                  let title = info[kCGWindowName as String] as? String, !title.isEmpty,
                   let boundsDict = info[kCGWindowBounds as String] as? [String: AnyObject] else { continue }
+            // kCGWindowName is redacted for other processes without Screen Recording. Requiring
+            // it made this whole list come back empty on machines without that grant, leaving AX
+            // - current-Space only - as the sole source of candidates: the "⌘Tab only shows this
+            // Space / only the fullscreen app" bug. Treat a missing title as *unknown* and
+            // resolve it from a held AX element in offSpaceCandidates instead of dropping the
+            // window.
+            let title = (info[kCGWindowName as String] as? String) ?? ""
+            let alpha = (info[kCGWindowAlpha as String] as? CGFloat) ?? 1
+            guard alpha > 0 else { continue }
             var rect = CGRect.zero
             guard CGRectMakeWithDictionaryRepresentation(boundsDict as CFDictionary, &rect) else { continue }
+            guard rect.width >= minimumWindowEdge, rect.height >= minimumWindowEdge else { continue }
             result.append(OffScreenWindow(pid: pid_t(ownerPID), windowID: CGWindowID(windowNumber), title: title, bounds: rect))
         }
         return result

@@ -63,7 +63,9 @@ struct WindowEnumeratorTests {
         ))
     }
 
-    @Test func isDuplicateTrueForMatchingPidAndBounds() {
+    @Test func isDuplicateTrueForMatchingPidAndBoundsOfIDLessWindow() {
+        // knownBounds only ever holds AX windows whose CGWindowID was unresolvable (see
+        // dedupKeys) - for those, pid + frame is the only identity available.
         let pid: pid_t = 42
         let bounds = CGRect(x: 0, y: 0, width: 100, height: 100)
         #expect(WindowEnumerator.isDuplicate(
@@ -97,6 +99,75 @@ struct WindowEnumeratorTests {
             windowID: 999, pid: 42, bounds: .zero,
             knownIDs: [], knownBounds: known
         ))
+    }
+
+    // MARK: - dedupKeys
+
+    @Test func dedupKeysRecordsBoundsOnlyForIDLessWindows() {
+        let full = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        let keys = WindowEnumerator.dedupKeys(for: [
+            .init(pid: 42, windowID: 101, bounds: full),
+            .init(pid: 42, windowID: 102, bounds: full),
+        ])
+        #expect(keys.ids == [101, 102])
+        #expect(keys.bounds.isEmpty)
+    }
+
+    @Test func dedupKeysFullscreenSiblingIsNotDroppedAsDuplicate() {
+        // The reported bug: two fullscreen VSCode windows share the identical full-display
+        // frame. The second arrives from Quartz with its own valid ID and must survive dedup.
+        let full = CGRect(x: 0, y: 0, width: 1512, height: 982)
+        let keys = WindowEnumerator.dedupKeys(for: [.init(pid: 42, windowID: 101, bounds: full)])
+        #expect(!WindowEnumerator.isDuplicate(
+            windowID: 102, pid: 42, bounds: full,
+            knownIDs: keys.ids, knownBounds: keys.bounds
+        ))
+    }
+
+    @Test func dedupKeysKeepsBoundsForUnresolvableID() {
+        let rect = CGRect(x: 10, y: 10, width: 400, height: 300)
+        let keys = WindowEnumerator.dedupKeys(for: [.init(pid: 7, windowID: nil, bounds: rect)])
+        #expect(keys.ids.isEmpty)
+        #expect(keys.bounds.count == 1)
+        #expect(keys.bounds[0].pid == 7)
+    }
+
+    @Test func dedupKeysSkipsIDLessWindowWithNoBounds() {
+        #expect(WindowEnumerator.dedupKeys(for: [.init(pid: 7, windowID: nil, bounds: nil)]).bounds.isEmpty)
+    }
+
+    // MARK: - carryingOverStillLive
+
+    @Test func carryOverKeepsWindowsAXStoppedReportingButQuartzStillLists() {
+        let fresh = [makeCandidate("fullscreen", windowID: 1)]
+        let previous = [makeCandidate("fullscreen", windowID: 1), makeCandidate("desktop", windowID: 2)]
+        let result = WindowEnumerator.carryingOverStillLive(fresh: fresh, previous: previous, liveIDs: [1, 2])
+        #expect(result.map(\.title) == ["fullscreen", "desktop"])
+    }
+
+    @Test func carryOverDropsWindowsThatNoLongerExist() {
+        let fresh = [makeCandidate("a", windowID: 1)]
+        let previous = [makeCandidate("a", windowID: 1), makeCandidate("closed", windowID: 2)]
+        let result = WindowEnumerator.carryingOverStillLive(fresh: fresh, previous: previous, liveIDs: [1])
+        #expect(result.map(\.title) == ["a"])
+    }
+
+    @Test func carryOverSkippedWhenLiveIDLookupFails() {
+        let fresh = [makeCandidate("a", windowID: 1)]
+        let previous = [makeCandidate("a", windowID: 1), makeCandidate("b", windowID: 2)]
+        #expect(WindowEnumerator.carryingOverStillLive(fresh: fresh, previous: previous, liveIDs: []).count == 1)
+    }
+
+    @Test func carryOverIgnoresCandidatesWithoutWindowID() {
+        let previous = [makeCandidate("noID", windowID: nil)]
+        #expect(WindowEnumerator.carryingOverStillLive(fresh: [], previous: previous, liveIDs: [1]).isEmpty)
+    }
+
+    @Test func carryOverPlacesCarriedWindowsBeforeMinimizedOnes() {
+        let fresh = [makeCandidate("visible", windowID: 1), makeCandidate("min", windowID: 3, isMinimized: true)]
+        let previous = [makeCandidate("carried", windowID: 2)]
+        let result = WindowEnumerator.carryingOverStillLive(fresh: fresh, previous: previous, liveIDs: [1, 2, 3])
+        #expect(result.map(\.title) == ["visible", "carried", "min"])
     }
 
     // MARK: - merge

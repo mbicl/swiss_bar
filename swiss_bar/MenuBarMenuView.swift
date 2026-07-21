@@ -28,6 +28,7 @@ struct MenuBarMenuView: View {
             }
         }
         if !permissionManager.isScreenRecordingGranted {
+            Text("Screen Recording off — window titles on other Spaces may show app names, and previews are unavailable.")
             Button("Grant Screen Recording Access…") {
                 permissionManager.requestScreenRecordingAccess()
             }

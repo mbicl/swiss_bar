@@ -15,6 +15,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let eventTapManager = EventTapManager()
     private var cancellables: Set<AnyCancellable> = []
 
+    /// Coalesces Space-change refreshes. `activeSpaceDidChangeNotification` fires when the
+    /// transition begins, while AX window visibility is still in flux (the outgoing Space's
+    /// windows are gone, the incoming Space's haven't arrived), so an immediate enumeration
+    /// captures an unrepresentative slice - and a fullscreen or multi-display transition emits a
+    /// burst of these. Re-arming on each notification collapses the burst and lands one refresh
+    /// after it settles.
+    private var spaceChangeRefresh: Task<Void, Never>?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         eventTapManager.delegate = self
 
@@ -55,13 +63,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let center = NSWorkspace.shared.notificationCenter
-        center.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { _ in
-            Task { @MainActor in
-                WindowEnumerator.warmElementCache()
-                WindowEnumerator.refreshCache()
-                WindowTracker.shared.prune()
-                WindowTracker.shared.seedMRU(WindowEnumerator.onScreenWindowIDsFrontToBack())
-            }
+        center.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.scheduleSpaceChangeRefresh()
         }
         // Keeps the candidate cache from going stale between ⌘Tab presses, so `switcherDidActivate`
         // never has to run a live (AX-heavy) enumeration on the event-tap callback itself.
@@ -75,6 +78,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         eventTapManager.uninstall()
+        spaceChangeRefresh?.cancel()
+    }
+
+    private func scheduleSpaceChangeRefresh() {
+        spaceChangeRefresh?.cancel()
+        spaceChangeRefresh = Task { @MainActor in
+            // Roughly the length of a fullscreen Space transition; shorter and the enumeration
+            // still lands mid-animation, longer and a ⌘Tab right after a Space change sees a
+            // stale ordering (the list itself stays complete thanks to refreshCache's carry-over).
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            guard !Task.isCancelled else { return }
+            WindowEnumerator.warmElementCache()
+            WindowEnumerator.refreshCache()
+            WindowTracker.shared.prune()
+            WindowTracker.shared.seedMRU(WindowEnumerator.onScreenWindowIDsFrontToBack())
+        }
     }
 }
 

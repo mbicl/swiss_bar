@@ -54,18 +54,27 @@ enum WindowActivator {
             // Space (dragging it on top of the fullscreen app and corrupting its UI) if done
             // beforehand - so no AX call happens here until the transition has actually
             // finished. Trigger the transition, then finish the raise once it lands.
-            let isFrontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier == window.pid
-            if isFrontmost || SpaceSwitcher.hasWindowOnActiveSpace(pid: window.pid) {
-                // Plain activation is a no-op here (app's already frontmost, or already has a
-                // window on the visible Space so macOS won't jump Spaces on its own) - force the
-                // transition the same way off-Space windows are focused: a user-generated
-                // SkyLight focus-by-ID.
-                focusBySkyLight(window)
-            } else {
+            //
+            // Always try SkyLight focus-by-ID first: it's the only mechanism that can
+            // disambiguate between multiple fullscreen Spaces of the *same* app - plain
+            // activate() has no way to say which Space/window to land on, and macOS's
+            // activation heuristic just jumps to whichever fullscreen Space it last
+            // considered "current" for that app, not necessarily the requested one. Fall
+            // back to plain activation only when SkyLight genuinely couldn't be used.
+            let usedSkyLight = focusBySkyLight(window)
+            if !usedSkyLight {
                 NSRunningApplication(processIdentifier: window.pid)?.activate(options: [])
             }
-            afterSpaceChange {
-                finishFullscreenActivation(window, axElement: axElement)
+            logger.notice("fullscreen activation path: \(usedSkyLight ? "skylight" : "plain-activate", privacy: .public) for '\(window.title, privacy: .public)'")
+            // Poll for the transition to land rather than waiting on
+            // `NSWorkspace.activeSpaceDidChangeNotification`: confirmed empirically that it never
+            // fires for a SkyLight-triggered fullscreen crossing (every activation was hitting the
+            // full fixed-delay fallback, never the notification), so a fixed wait before the first
+            // AX check only added latency - polling resolves as soon as the transition actually
+            // finishes instead of always waiting the worst-case duration.
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                finishFullscreenActivation(window, axElement: axElement, retriesLeft: 9)
             }
             return
         }
@@ -73,8 +82,12 @@ enum WindowActivator {
         // Normal → normal. AX can't see (or raise) a window on a non-visible Space and SkyLight
         // focus-by-ID doesn't switch Spaces on its own, so move the display to the window's Space
         // first. No-op when it's already on a current Space.
+        var spaceSwitchSucceeded = true
         if let windowID = window.windowID {
-            SpaceSwitcher.switchToSpace(of: windowID)
+            spaceSwitchSucceeded = SpaceSwitcher.switchToSpace(of: windowID)
+            if !spaceSwitchSucceeded {
+                logger.notice("switchToSpace did not switch for wid=\(windowID) - AX/raise retries are unlikely to find the window")
+            }
         }
 
         if let axElement {
@@ -96,24 +109,36 @@ enum WindowActivator {
 
         // No AX element even after the Space switch. SkyLight focus-by-ID plus app activation,
         // then poll for the window to become AX-visible now that we're (hopefully) on its Space.
-        focusBySkyLight(window)
-        activateAppAndRetryRaise(window)
+        _ = focusBySkyLight(window)
+        activateAppAndRetryRaise(window, spaceSwitchSucceeded: spaceSwitchSucceeded)
     }
 
-    /// Finishes a fullscreen-crossing activation after the Space transition has landed: resolves
-    /// an AX element for the window (it may not have been AX-visible before the transition), then
-    /// un-minimizes/raises/focuses it. Falls back to app activation alone if no element can be
-    /// found - matches the "no AX element" behavior of the normal-window path.
-    private static func finishFullscreenActivation(_ window: CandidateWindow, axElement: AXUIElement?) {
+    /// Finishes a fullscreen-crossing activation once the Space transition has landed: resolves an
+    /// AX element for the window (it may not have been AX-visible before the transition), then
+    /// un-minimizes/raises/focuses it. `kAXWindowsAttribute` only reports windows on the
+    /// currently-displayed Space, so a match here is a reliable signal the transition has actually
+    /// completed - safe to poll for aggressively rather than waiting a fixed duration up front.
+    /// Retries every 100ms (9 retries ≈ 1s total, matching the previous fixed-wait ceiling) before
+    /// falling back to app activation alone - matches the "no AX element" behavior of the
+    /// normal-window path.
+    private static func finishFullscreenActivation(_ window: CandidateWindow, axElement: AXUIElement?, retriesLeft: Int) {
         let resolved = axElement
             ?? window.windowID.flatMap { WindowTracker.shared.element(for: $0) }
             ?? WindowEnumerator.axWindows(for: window.pid).flatMap { matchingAXElement(for: window, in: $0) }
 
         guard let resolved else {
-            logger.notice("finishFullscreenActivation: no AX element for '\(window.title, privacy: .public)' - app activated only")
-            NSRunningApplication(processIdentifier: window.pid)?.activate(options: [])
+            guard retriesLeft > 0 else {
+                logger.notice("finishFullscreenActivation: no AX element for '\(window.title, privacy: .public)' after retries - app activated only")
+                NSRunningApplication(processIdentifier: window.pid)?.activate(options: [])
+                return
+            }
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: 100_000_000)
+                finishFullscreenActivation(window, axElement: nil, retriesLeft: retriesLeft - 1)
+            }
             return
         }
+        logger.notice("finishFullscreenActivation: AX element resolved for '\(window.title, privacy: .public)' - raising")
 
         if window.isMinimized {
             AXUIElementSetAttributeValue(resolved, kAXMinimizedAttribute as CFString, kCFBooleanFalse)
@@ -124,28 +149,6 @@ enum WindowActivator {
         AXUIElementSetAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, resolved)
         AXUIElementPerformAction(resolved, kAXRaiseAction as CFString)
         NSRunningApplication(processIdentifier: window.pid)?.activate(options: [])
-    }
-
-    /// Runs `body` once the active Space changes (`NSWorkspace.activeSpaceDidChangeNotification`)
-    /// or after `timeout` elapses, whichever comes first - exactly once. Used to defer AX work
-    /// until a fullscreen-crossing transition has actually completed, since neither the
-    /// notification alone (may not fire if the transition doesn't happen) nor a fixed delay alone
-    /// (races the animation) is sufficient by itself.
-    private static func afterSpaceChange(timeout: TimeInterval = 1.0, _ body: @escaping () -> Void) {
-        var completed = false
-        var observer: NSObjectProtocol?
-        let complete = {
-            guard !completed else { return }
-            completed = true
-            if let observer { NSWorkspace.shared.notificationCenter.removeObserver(observer) }
-            body()
-        }
-        observer = NSWorkspace.shared.notificationCenter.addObserver(
-            forName: NSWorkspace.activeSpaceDidChangeNotification,
-            object: nil,
-            queue: .main
-        ) { _ in complete() }
-        DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { complete() }
     }
 
     /// Matches a `CandidateWindow` against a live AX window list: by window ID when resolvable,
@@ -160,19 +163,31 @@ enum WindowActivator {
     }
 
     /// Best-effort focus of a specific window by ID (switching Space if needed) via SkyLight.
-    /// No-op when the window ID, process serial number, or SkyLight itself is unavailable.
-    private static func focusBySkyLight(_ window: CandidateWindow) {
-        guard let windowID = window.windowID, let setFrontProcess = slpsSetFrontProcessWithOptions else { return }
+    /// Returns `false` when the window ID, process serial number, or SkyLight itself is
+    /// unavailable, or when `_SLPSSetFrontProcessWithOptions` itself reports failure - callers
+    /// needing a Space-jump guarantee should fall back to plain app activation in that case.
+    @discardableResult
+    private static func focusBySkyLight(_ window: CandidateWindow) -> Bool {
+        guard let windowID = window.windowID else {
+            logger.notice("focusBySkyLight: no windowID for '\(window.title, privacy: .public)'")
+            return false
+        }
+        guard let setFrontProcess = slpsSetFrontProcessWithOptions else {
+            logger.notice("focusBySkyLight: _SLPSSetFrontProcessWithOptions symbol unavailable")
+            return false
+        }
         var psn = ProcessSerialNumber()
         guard GetProcessForPID(window.pid, &psn) == noErr else {
             logger.notice("GetProcessForPID failed for pid \(window.pid)")
-            return
+            return false
         }
         let result = setFrontProcess(&psn, windowID, kCPSUserGenerated)
         makeKeyWindow(&psn, windowID)
+        logger.notice("focusBySkyLight: wid=\(windowID) psn=(\(psn.highLongOfPSN),\(psn.lowLongOfPSN)) result=\(result.rawValue)")
         if result != .success {
-            logger.notice("_SLPSSetFrontProcessWithOptions failed: \(result.rawValue)")
+            return false
         }
+        return true
     }
 
     /// Posts a synthetic focus event pair directly to the owning process, telling it to make the
@@ -198,9 +213,18 @@ enum WindowActivator {
     /// asynchronous, and a Space switch takes a few hundred ms). Matched by window ID when
     /// possible; title comparison is the final fallback and can miss (titles change - e.g.
     /// terminal spinner animations).
-    private static func activateAppAndRetryRaise(_ window: CandidateWindow) {
+    private static func activateAppAndRetryRaise(_ window: CandidateWindow, spaceSwitchSucceeded: Bool) {
         NSRunningApplication(processIdentifier: window.pid)?.activate(options: [])
-        attemptRaise(window, retriesLeft: 4)
+        attemptRaise(window, retriesLeft: raiseRetryCount(spaceSwitchSucceeded: spaceSwitchSucceeded))
+    }
+
+    /// How many times to retry resolving an AX element after a Space-switch attempt. A failed
+    /// switch means the window's Space almost certainly never became visible, so AX enumeration
+    /// can never find it regardless of retry count - one cheap immediate check (not zero, in
+    /// case the window was already AX-visible for an unrelated reason) beats burning 4×250ms
+    /// against a doomed outcome. Pure - testable in isolation.
+    nonisolated static func raiseRetryCount(spaceSwitchSucceeded: Bool) -> Int {
+        spaceSwitchSucceeded ? 4 : 1
     }
 
     private static func attemptRaise(_ window: CandidateWindow, retriesLeft: Int) {

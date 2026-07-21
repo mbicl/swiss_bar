@@ -88,22 +88,6 @@ enum SpaceSwitcher {
         return false
     }
 
-    /// True if `pid`'s app already has a window on the currently active Space. When true, plain
-    /// `NSRunningApplication.activate()` is a no-op for switching to a *different* Space-bound
-    /// window of that app (macOS just keeps showing the current-Space window instead of jumping
-    /// Spaces), so the caller needs a stronger mechanism (SkyLight focus-by-ID) instead.
-    static func hasWindowOnActiveSpace(pid: pid_t) -> Bool {
-        guard let mainConnectionID = cgsMainConnectionID, let getActiveSpace = cgsGetActiveSpace else { return false }
-        let cid = mainConnectionID()
-        let activeSpace = getActiveSpace(cid)
-        guard let axWindows = WindowEnumerator.axWindows(for: pid) else { return false }
-        for axWindow in axWindows {
-            guard let wid = WindowEnumerator.windowID(of: axWindow) else { continue }
-            if spaceID(of: wid) == activeSpace { return true }
-        }
-        return false
-    }
-
     /// Navigates to the Space containing `windowID` when a direct CGS switch is the right tool -
     /// i.e. a normal→normal Space change that plain app activation won't perform. Returns false
     /// (does nothing) when the target or the current Space is fullscreen: for those, forcing the

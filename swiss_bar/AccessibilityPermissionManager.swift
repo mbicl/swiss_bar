@@ -33,9 +33,10 @@ struct RealTrustChecker: TrustChecking {
 
 /// Three separate TCC gates guard global keyboard interception and window enumeration:
 /// Accessibility (required for an active event tap and AX window control), Input Monitoring
-/// (checked as a belt-and-braces second gate), and Screen Recording (required to read window
-/// titles for windows on other Spaces via `CGWindowListCopyWindowInfo`, since AX itself only
-/// reports windows on the currently-visible Space). Polls because there's no notification for
+/// (checked as a belt-and-braces second gate), and Screen Recording (improves title fidelity for
+/// windows on other Spaces that swiss_bar has never held an AX element for, via
+/// `CGWindowListCopyWindowInfo`'s `kCGWindowName` - off-Space enumeration itself works without it,
+/// falling back to a held AX element or the app name). Polls because there's no notification for
 /// TCC grants changing at runtime.
 final class AccessibilityPermissionManager: ObservableObject {
     @Published private(set) var isAccessibilityTrusted = false
