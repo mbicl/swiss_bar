@@ -80,4 +80,32 @@ struct AppSettingsTests {
         #expect(reloaded.switcherSize == .large)
         #expect(reloaded.switcherTileContent == .windowPreview)
     }
+
+    @Test func clipboardHistoryCapacityDefaultsToTwenty() {
+        let settings = AppSettings(defaults: makeDefaults())
+        #expect(settings.clipboardHistoryCapacity == 20)
+    }
+
+    @Test func clipboardHistoryReorderOnPasteDefaultsToTrue() {
+        let settings = AppSettings(defaults: makeDefaults())
+        #expect(settings.clipboardHistoryReorderOnPaste == true)
+    }
+
+    @Test func clipboardHistoryCapacityPersists() {
+        let defaults = makeDefaults()
+
+        AppSettings(defaults: defaults).clipboardHistoryCapacity = 50
+
+        let reloaded = AppSettings(defaults: defaults)
+        #expect(reloaded.clipboardHistoryCapacity == 50)
+    }
+
+    @Test func clipboardHistoryReorderOnPastePersists() {
+        let defaults = makeDefaults()
+
+        AppSettings(defaults: defaults).clipboardHistoryReorderOnPaste = false
+
+        let reloaded = AppSettings(defaults: defaults)
+        #expect(reloaded.clipboardHistoryReorderOnPaste == false)
+    }
 }
