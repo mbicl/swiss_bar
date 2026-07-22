@@ -22,7 +22,16 @@ struct swiss_barApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        MenuBarExtra(isInserted: $settings.networkSpeedEnabled) {
+        // `.constant(...)` rather than a two-way `$settings.networkSpeedEnabled` Binding
+        // deliberately - MenuBarExtra's `isInserted:` has a documented SwiftUI defect where it can
+        // write back into the bound storage during its own internal scene update, which (with a
+        // `@Published` property) fires `objectWillChange` while a view update is already in
+        // progress and causes an unending update-retry loop - confirmed via a real freeze sample
+        // showing `MenuBarExtraHost.requestUpdate` repeatedly calling `updateButton` for *both*
+        // status items. A `.constant` has no real settable storage, so there's nothing to write
+        // back into; `body` still re-evaluates (and passes a fresh value) whenever `settings`
+        // publishes a change, since it's already observed via `@ObservedObject` above.
+        MenuBarExtra(isInserted: .constant(settings.networkSpeedEnabled)) {
             NetworkSpeedGraphView(monitor: appDelegate.networkSpeedMonitor, settings: settings)
         } label: {
             NetworkSpeedMenuBarLabel(imageRenderer: appDelegate.networkSpeedMenuBarImageRenderer)
