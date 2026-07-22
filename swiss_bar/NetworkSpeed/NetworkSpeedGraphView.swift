@@ -31,7 +31,7 @@ struct NetworkSpeedGraphView: View {
             )
         }
         .padding()
-        .frame(width: 260)
+        .frame(width: 320)
     }
 }
 
@@ -42,6 +42,15 @@ private struct NetworkSpeedGraphSection: View {
     let samples: [NetworkSpeedSample]
     let rateKeyPath: KeyPath<NetworkSpeedSample, Double>
 
+    private var upperBound: Double {
+        NetworkSpeedChartScale.niceUpperBound(forMaxValue: samples.map { $0[keyPath: rateKeyPath] }.max() ?? 0)
+    }
+
+    private var xDomain: ClosedRange<Date> {
+        let now = Date()
+        return (samples.first?.date ?? now)...(samples.last?.date ?? now)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text("\(title): \(NetworkRateFormatter.string(forBytesPerSecond: currentRate))")
@@ -50,14 +59,36 @@ private struct NetworkSpeedGraphSection: View {
             // `samples` is already `Identifiable` (stable `UUID`), unlike a freshly-mapped tuple
             // array keyed on `Date` - Charts' diffing couldn't establish stable identity across
             // renders for the latter, which pegged the CPU in an unending re-layout loop.
+            //
+            // Both axis domains are pinned explicitly (rather than left to Charts' automatic "nice
+            // bounds" inference) and implicit animation is disabled: with `samples` mutating every
+            // second and the dropdown's first-ever open needing to lay out a full history backlog
+            // at once, letting Charts re-solve bounds and animate mark transitions on every tick is
+            // a well-documented cause of real-time-chart hangs.
             Chart(samples) { sample in
                 AreaMark(x: .value("Time", sample.date), y: .value("Rate", sample[keyPath: rateKeyPath]))
                     .foregroundStyle(color.opacity(0.25))
+                    .interpolationMethod(.catmullRom)
                 LineMark(x: .value("Time", sample.date), y: .value("Rate", sample[keyPath: rateKeyPath]))
                     .foregroundStyle(color)
+                    .interpolationMethod(.catmullRom)
             }
             .chartXAxis(.hidden)
-            .frame(height: 60)
+            .chartXScale(domain: xDomain)
+            .chartYScale(domain: 0...upperBound)
+            .chartYAxis {
+                AxisMarks(values: [0, upperBound / 2, upperBound]) { value in
+                    AxisGridLine()
+                    AxisTick()
+                    AxisValueLabel {
+                        if let raw = value.as(Double.self) {
+                            Text(NetworkRateFormatter.string(forBytesPerSecond: raw))
+                        }
+                    }
+                }
+            }
+            .transaction { $0.animation = nil }
+            .frame(height: 100)
         }
     }
 }
