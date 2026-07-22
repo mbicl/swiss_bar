@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import UniformTypeIdentifiers
 import os
 
 /// Polls `NSPasteboard.general` for changes and records new entries into a `ClipboardHistoryStore`.
@@ -69,25 +70,71 @@ final class ClipboardMonitor {
         hash == topHash
     }
 
-    /// Text takes priority over image - some apps (e.g. Excel) put both a picture and a text
-    /// representation on the pasteboard for a copied selection, and the text is what the user means.
-    /// Image capture only fires for actual image *data* types (`.tiff`/`.png`), not a bare
-    /// `NSImage(pasteboard:)` load, which would also resolve image *files* copied in Finder - a
-    /// Finder file copy shouldn't become a bitmap history entry.
+    enum CaptureCategory: Equatable {
+        case text, image, fileURL
+    }
+
+    /// Categories present on the pasteboard, in the order the source app declared them (deduped).
+    /// `NSPasteboard.types` preserves declaration order, and apps declare their primary/richest
+    /// representation first - so this order expresses what the copy "primarily is". This is what
+    /// lets an image copied from a browser's "Copy Image" (image data + the image's URL as plain
+    /// text) capture as an image instead of as a URL text entry, while a plain text copy that
+    /// happens to carry other flavors still captures as text.
+    nonisolated static func captureCategories(in types: [NSPasteboard.PasteboardType]) -> [CaptureCategory] {
+        var seen: [CaptureCategory] = []
+        for type in types {
+            let category: CaptureCategory?
+            if type == .fileURL {
+                category = .fileURL
+            } else if let ut = UTType(type.rawValue), ut.conforms(to: .plainText) {
+                category = .text
+            } else if let ut = UTType(type.rawValue), ut.conforms(to: .image) {
+                category = .image
+            } else {
+                category = nil // html/rtf/dyn/legacy flavors don't decide the capture
+            }
+            if let category, !seen.contains(category) {
+                seen.append(category)
+            }
+        }
+        return seen
+    }
+
+    nonisolated static func isImageFile(_ url: URL) -> Bool {
+        UTType(filenameExtension: url.pathExtension)?.conforms(to: .image) ?? false
+    }
+
+    /// Tries each declared category in order, falling through to the next when one can't actually
+    /// produce an item (e.g. a file-url category whose file turns out not to be an image).
     private static func buildItem(
         from pasteboard: NSPasteboard, types: [NSPasteboard.PasteboardType], persistence: ClipboardHistoryPersistence
     ) -> ClipboardItem? {
-        if let text = pasteboard.string(forType: .string), !text.isEmpty {
-            return ClipboardItem(id: UUID(), date: Date(), contentHash: ClipboardContentHasher.hash(text), kind: .text(text))
+        for category in captureCategories(in: types) {
+            switch category {
+            case .text:
+                if let text = pasteboard.string(forType: .string), !text.isEmpty {
+                    return ClipboardItem(id: UUID(), date: Date(), contentHash: ClipboardContentHasher.hash(text), kind: .text(text))
+                }
+            case .image:
+                if let image = NSImage(pasteboard: pasteboard),
+                   let (fileName, pixelSize, pngData) = persistence.writeImageFile(image) {
+                    return ClipboardItem(
+                        id: UUID(), date: Date(), contentHash: ClipboardContentHasher.hash(pngData),
+                        kind: .image(fileName: fileName, pixelSize: pixelSize)
+                    )
+                }
+            case .fileURL:
+                if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
+                   urls.count == 1, isImageFile(urls[0]),
+                   let image = NSImage(contentsOf: urls[0]),
+                   let (fileName, pixelSize, pngData) = persistence.writeImageFile(image) {
+                    return ClipboardItem(
+                        id: UUID(), date: Date(), contentHash: ClipboardContentHasher.hash(pngData),
+                        kind: .image(fileName: fileName, pixelSize: pixelSize)
+                    )
+                }
+            }
         }
-        guard types.contains(.tiff) || types.contains(.png) else { return nil }
-        guard let image = NSImage(pasteboard: pasteboard),
-              let (fileName, pixelSize, pngData) = persistence.writeImageFile(image) else {
-            return nil
-        }
-        return ClipboardItem(
-            id: UUID(), date: Date(), contentHash: ClipboardContentHasher.hash(pngData),
-            kind: .image(fileName: fileName, pixelSize: pixelSize)
-        )
+        return nil
     }
 }

@@ -12,7 +12,6 @@ struct ClipboardHotkeyTapManagerTests {
     private static let vKeyCode: CGKeyCode = 9
     private static let escKeyCode: CGKeyCode = 53
     private static let returnKeyCode: CGKeyCode = 36
-    private static let keypadEnterKeyCode: CGKeyCode = 76
     private static let upArrowKeyCode: CGKeyCode = 126
     private static let downArrowKeyCode: CGKeyCode = 125
     private static let unrelatedKeyCode: CGKeyCode = 0 // kVK_ANSI_A
@@ -22,6 +21,15 @@ struct ClipboardHotkeyTapManagerTests {
             eventType: .keyDown, keyCode: Self.vKeyCode, flags: [.maskCommand, .maskShift], isPickerActive: false
         )
         #expect(result.intent == .activate)
+        #expect(result.consume == true)
+        #expect(result.isPickerActive == true)
+    }
+
+    @Test func cmdShiftVWhileActiveAdvancesForwardAndConsumes() {
+        let result = ClipboardHotkeyTapManager.decide(
+            eventType: .keyDown, keyCode: Self.vKeyCode, flags: [.maskCommand, .maskShift], isPickerActive: true
+        )
+        #expect(result.intent == .move(down: true))
         #expect(result.consume == true)
         #expect(result.isPickerActive == true)
     }
@@ -53,22 +61,14 @@ struct ClipboardHotkeyTapManagerTests {
         #expect(result.isPickerActive == false)
     }
 
-    @Test func returnWhileActiveCommitsAndConsumes() {
+    @Test func returnWhileActiveIsConsumedWithNoIntent() {
+        // Release is the only commit trigger now - Return just falls into the generic swallow.
         let result = ClipboardHotkeyTapManager.decide(
             eventType: .keyDown, keyCode: Self.returnKeyCode, flags: [], isPickerActive: true
         )
-        #expect(result.intent == .commit)
+        #expect(result.intent == nil)
         #expect(result.consume == true)
-        #expect(result.isPickerActive == false)
-    }
-
-    @Test func keypadEnterWhileActiveCommitsAndConsumes() {
-        let result = ClipboardHotkeyTapManager.decide(
-            eventType: .keyDown, keyCode: Self.keypadEnterKeyCode, flags: [], isPickerActive: true
-        )
-        #expect(result.intent == .commit)
-        #expect(result.consume == true)
-        #expect(result.isPickerActive == false)
+        #expect(result.isPickerActive == true)
     }
 
     @Test func downArrowWhileActiveMovesDown() {
@@ -107,13 +107,51 @@ struct ClipboardHotkeyTapManagerTests {
         #expect(result.isPickerActive == false)
     }
 
-    @Test func flagsChangedWhileActivePassesThroughUnchanged() {
+    // MARK: - Commit on modifier release
+
+    @Test func commandReleaseWhileActiveCommitsWithoutConsuming() {
+        let result = ClipboardHotkeyTapManager.decide(
+            eventType: .flagsChanged, keyCode: 0, flags: .maskShift, isPickerActive: true
+        )
+        #expect(result.intent == .commit)
+        #expect(result.consume == false)
+        #expect(result.isPickerActive == false)
+    }
+
+    @Test func shiftReleaseWhileActiveCommitsWithoutConsuming() {
+        let result = ClipboardHotkeyTapManager.decide(
+            eventType: .flagsChanged, keyCode: 0, flags: .maskCommand, isPickerActive: true
+        )
+        #expect(result.intent == .commit)
+        #expect(result.consume == false)
+        #expect(result.isPickerActive == false)
+    }
+
+    @Test func bothModifiersReleasedWhileActiveCommitsWithoutConsuming() {
         let result = ClipboardHotkeyTapManager.decide(
             eventType: .flagsChanged, keyCode: 0, flags: [], isPickerActive: true
+        )
+        #expect(result.intent == .commit)
+        #expect(result.consume == false)
+        #expect(result.isPickerActive == false)
+    }
+
+    @Test func flagsChangedWithBothModifiersStillHeldPassesThroughUnchanged() {
+        let result = ClipboardHotkeyTapManager.decide(
+            eventType: .flagsChanged, keyCode: 0, flags: [.maskCommand, .maskShift], isPickerActive: true
         )
         #expect(result.intent == nil)
         #expect(result.consume == false)
         #expect(result.isPickerActive == true)
+    }
+
+    @Test func flagsChangedWhileInactivePassesThrough() {
+        let result = ClipboardHotkeyTapManager.decide(
+            eventType: .flagsChanged, keyCode: 0, flags: [], isPickerActive: false
+        )
+        #expect(result.intent == nil)
+        #expect(result.consume == false)
+        #expect(result.isPickerActive == false)
     }
 
     @Test func nonKeyEventTypePassesThroughUnchanged() {

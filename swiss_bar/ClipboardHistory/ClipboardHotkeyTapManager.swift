@@ -17,9 +17,10 @@ protocol ClipboardHotkeyTapDelegate: AnyObject {
 /// Intercepts Cmd+Shift+V system-wide and consumes it before the frontmost app sees it (which
 /// would otherwise treat it as "paste and match style" or similar). Independent of
 /// `EventTapManager` - with only two stateful tap consumers in the codebase, sharing the ~40 lines
-/// of `CGEvent.tapCreate`/`CFMachPort` lifecycle plumbing would be premature abstraction. Simpler
-/// state machine than the switcher's, since this is a one-shot hotkey rather than a held-modifier
-/// chord: no `flagsChanged`-triggers-commit logic needed.
+/// of `CGEvent.tapCreate`/`CFMachPort` lifecycle plumbing would be premature abstraction. The state
+/// machine itself mirrors `EventTapManager`'s hold/cycle/release chord exactly (hold Cmd+Shift,
+/// press V repeatedly to cycle through history, release either modifier to paste the current
+/// selection) - just adapted for a two-modifier chord instead of Cmd alone.
 final class ClipboardHotkeyTapManager {
 
     enum PickerIntent: Equatable {
@@ -39,8 +40,6 @@ final class ClipboardHotkeyTapManager {
 
     nonisolated private static let vKeyCode: CGKeyCode = 9
     nonisolated private static let escKeyCode: CGKeyCode = 53
-    nonisolated private static let returnKeyCode: CGKeyCode = 36
-    nonisolated private static let keypadEnterKeyCode: CGKeyCode = 76
     nonisolated private static let upArrowKeyCode: CGKeyCode = 126
     nonisolated private static let downArrowKeyCode: CGKeyCode = 125
 
@@ -97,37 +96,46 @@ final class ClipboardHotkeyTapManager {
 
     /// Pure decision logic: given the current active state and a raw key/flags event, decide what
     /// the picker should do. No `CGEvent`/`CFMachPort` dependency - testable in isolation.
+    ///
+    /// Commit is triggered by releasing either chord modifier (Cmd or Shift), not by a keypress -
+    /// mirrors `EventTapManager.decide()`'s `flagsChanged`-triggers-commit pattern for Cmd+Tab,
+    /// adapted for a two-modifier chord. `consume: false` on commit: a modifier key-up carries no
+    /// meaning worth swallowing and must propagate normally for system-wide modifier tracking.
     nonisolated static func decide(
         eventType: CGEventType,
         keyCode: CGKeyCode,
         flags: CGEventFlags,
         isPickerActive: Bool
     ) -> (intent: PickerIntent?, consume: Bool, isPickerActive: Bool) {
+        if eventType == .flagsChanged {
+            if isPickerActive, !(flags.contains(.maskCommand) && flags.contains(.maskShift)) {
+                return (.commit, false, false)
+            }
+            return (nil, false, isPickerActive)
+        }
+
         guard eventType == .keyDown else {
             return (nil, false, isPickerActive)
         }
 
-        if !isPickerActive {
-            if flags.contains(.maskCommand), flags.contains(.maskShift), keyCode == vKeyCode {
-                return (.activate, true, true)
-            }
-            return (nil, false, false)
+        if isPickerActive, keyCode == escKeyCode {
+            return (.cancel, true, false)
+        }
+        if isPickerActive, keyCode == upArrowKeyCode {
+            return (.move(down: false), true, true)
+        }
+        if isPickerActive, keyCode == downArrowKeyCode {
+            return (.move(down: true), true, true)
         }
 
-        switch keyCode {
-        case escKeyCode:
-            return (.cancel, true, false)
-        case returnKeyCode, keypadEnterKeyCode:
-            return (.commit, true, false)
-        case upArrowKeyCode:
-            return (.move(down: false), true, true)
-        case downArrowKeyCode:
-            return (.move(down: true), true, true)
-        default:
-            // Swallow everything else while the HUD is up so nothing leaks to the frontmost app -
-            // same rationale as EventTapManager's Cmd+Q-swallowing while the switcher is active.
-            return (nil, true, true)
+        guard flags.contains(.maskCommand), flags.contains(.maskShift), keyCode == vKeyCode else {
+            // Swallow everything else while the HUD is up (Return included - release is the only
+            // commit trigger now) so nothing leaks to the frontmost app. Inactive: pass through.
+            return (nil, isPickerActive, isPickerActive)
         }
+
+        // Repeated V while already active cycles forward, same as EventTapManager's repeated-Tab.
+        return isPickerActive ? (.move(down: true), true, true) : (.activate, true, true)
     }
 
     private func handle(type: CGEventType, event: CGEvent) -> Unmanaged<CGEvent>? {
