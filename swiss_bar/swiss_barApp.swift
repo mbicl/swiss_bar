@@ -10,6 +10,7 @@ import SwiftUI
 @main
 struct swiss_barApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @ObservedObject private var settings = AppSettings.shared
 
     var body: some Scene {
         MenuBarExtra("swiss_bar", systemImage: "square.stack") {
@@ -20,8 +21,16 @@ struct swiss_barApp: App {
             )
         }
         .menuBarExtraStyle(.window)
+
+        MenuBarExtra(isInserted: $settings.networkSpeedEnabled) {
+            NetworkSpeedGraphView(monitor: appDelegate.networkSpeedMonitor, settings: settings)
+        } label: {
+            NetworkSpeedMenuBarLabel(monitor: appDelegate.networkSpeedMonitor, settings: settings)
+        }
+        .menuBarExtraStyle(.window)
+
         Settings {
-            SettingsView(settings: AppSettings.shared, clipboardHistoryStore: appDelegate.clipboardHistoryStore)
+            SettingsView(settings: settings, clipboardHistoryStore: appDelegate.clipboardHistoryStore)
         }
     }
 }

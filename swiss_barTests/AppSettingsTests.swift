@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import SwiftUI
 import Testing
 @testable import swiss_bar
 
@@ -107,5 +108,26 @@ struct AppSettingsTests {
 
         let reloaded = AppSettings(defaults: defaults)
         #expect(reloaded.clipboardHistoryReorderOnPaste == false)
+    }
+
+    @Test func networkSpeedColorsDefaultToYellowAndMint() {
+        let settings = AppSettings(defaults: makeDefaults())
+        #expect(settings.networkSpeedUploadColor == .yellow)
+        #expect(settings.networkSpeedDownloadColor == .mint)
+    }
+
+    @Test func networkSpeedColorsPersist() {
+        let defaults = makeDefaults()
+
+        let settings = AppSettings(defaults: defaults)
+        settings.networkSpeedUploadColor = .red
+        settings.networkSpeedDownloadColor = .blue
+
+        // `Color`'s `==` isn't reliable across different construction paths (a named system color
+        // vs. one reconstructed from RGBA components), so compare via the same hex encoding the
+        // persistence layer itself uses rather than comparing `Color` values directly.
+        let reloaded = AppSettings(defaults: defaults)
+        #expect(ColorHex.hexString(from: reloaded.networkSpeedUploadColor) == ColorHex.hexString(from: .red))
+        #expect(ColorHex.hexString(from: reloaded.networkSpeedDownloadColor) == ColorHex.hexString(from: .blue))
     }
 }

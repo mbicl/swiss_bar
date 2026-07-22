@@ -86,7 +86,13 @@ private struct NetworkSpeedSettingsTab: View {
     var body: some View {
         Form {
             Toggle("Enable network speed indicator", isOn: $settings.networkSpeedEnabled)
-            ComingSoonNote()
+            ColorPicker("Upload color", selection: $settings.networkSpeedUploadColor)
+                .disabled(!settings.networkSpeedEnabled)
+            ColorPicker("Download color", selection: $settings.networkSpeedDownloadColor)
+                .disabled(!settings.networkSpeedEnabled)
+            Text("Shows live upload/download speed as a separate menu bar item. Click it for a rolling graph of the last minute.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .formStyle(.grouped)
     }

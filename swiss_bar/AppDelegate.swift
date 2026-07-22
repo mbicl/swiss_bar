@@ -9,6 +9,7 @@ import Combine
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let permissionManager = AccessibilityPermissionManager()
     let keyboardCleaningManager = KeyboardCleaningManager()
+    let networkSpeedMonitor = NetworkSpeedMonitor()
 
     private let settings = AppSettings.shared
     private let switcherViewModel = SwitcherViewModel()
@@ -68,6 +69,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .removeDuplicates()
             .sink { [weak self] capacity in
                 self?.clipboardHistoryStore.setCapacity(capacity)
+            }
+            .store(in: &cancellables)
+
+        // Emits the current value on subscribe, so this also performs the initial install.
+        settings.$networkSpeedEnabled
+            .removeDuplicates()
+            .sink { [weak self] enabled in
+                guard let self else { return }
+                if enabled {
+                    networkSpeedMonitor.start()
+                } else {
+                    networkSpeedMonitor.stop()
+                }
             }
             .store(in: &cancellables)
 
@@ -131,6 +145,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         keyboardCleaningManager.stop()
         clipboardHotkeyTap.uninstall()
         clipboardMonitor.stop()
+        networkSpeedMonitor.stop()
         spaceChangeRefresh?.cancel()
     }
 

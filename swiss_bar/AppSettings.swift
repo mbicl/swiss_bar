@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import SwiftUI
 
 /// Single source of truth for user-configurable settings, backed by `UserDefaults`
 /// (injectable so tests don't touch real preferences). Every feature has an enabled flag;
@@ -18,6 +19,8 @@ final class AppSettings: ObservableObject {
         static let clipboardHistoryCapacity = "feature.clipboardHistory.capacity"
         static let clipboardHistoryReorderOnPaste = "feature.clipboardHistory.reorderOnPaste"
         static let networkSpeedEnabled = "feature.networkSpeed.enabled"
+        static let networkSpeedUploadColorHex = "feature.networkSpeed.uploadColorHex"
+        static let networkSpeedDownloadColorHex = "feature.networkSpeed.downloadColorHex"
         static let claudeUsageEnabled = "feature.claudeUsage.enabled"
     }
 
@@ -35,6 +38,12 @@ final class AppSettings: ObservableObject {
     }
     @Published var networkSpeedEnabled: Bool {
         didSet { defaults.set(networkSpeedEnabled, forKey: Keys.networkSpeedEnabled) }
+    }
+    @Published var networkSpeedUploadColor: Color {
+        didSet { defaults.set(ColorHex.hexString(from: networkSpeedUploadColor), forKey: Keys.networkSpeedUploadColorHex) }
+    }
+    @Published var networkSpeedDownloadColor: Color {
+        didSet { defaults.set(ColorHex.hexString(from: networkSpeedDownloadColor), forKey: Keys.networkSpeedDownloadColorHex) }
     }
     @Published var claudeUsageEnabled: Bool {
         didSet { defaults.set(claudeUsageEnabled, forKey: Keys.claudeUsageEnabled) }
@@ -58,6 +67,8 @@ final class AppSettings: ObservableObject {
         clipboardHistoryCapacity = defaults.object(forKey: Keys.clipboardHistoryCapacity) as? Int ?? 20
         clipboardHistoryReorderOnPaste = defaults.object(forKey: Keys.clipboardHistoryReorderOnPaste) as? Bool ?? true
         networkSpeedEnabled = defaults.object(forKey: Keys.networkSpeedEnabled) as? Bool ?? true
+        networkSpeedUploadColor = defaults.string(forKey: Keys.networkSpeedUploadColorHex).flatMap(ColorHex.color(fromHex:)) ?? .yellow
+        networkSpeedDownloadColor = defaults.string(forKey: Keys.networkSpeedDownloadColorHex).flatMap(ColorHex.color(fromHex:)) ?? .mint
         claudeUsageEnabled = defaults.object(forKey: Keys.claudeUsageEnabled) as? Bool ?? true
         switcherStyle = defaults.string(forKey: SwitcherStyle.defaultsKey).flatMap(SwitcherStyle.init) ?? .horizontal
         switcherSize = defaults.string(forKey: SwitcherSize.defaultsKey).flatMap(SwitcherSize.init) ?? .medium
