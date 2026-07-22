@@ -12,7 +12,7 @@ import Foundation
 @MainActor
 final class NetworkSpeedMonitor: ObservableObject {
     private static let pollInterval: TimeInterval = 1.0
-    private static let maxHistorySamples = 60
+    private static let maxHistorySamples = 15
 
     @Published private(set) var uploadBytesPerSecond: Double = 0
     @Published private(set) var downloadBytesPerSecond: Double = 0

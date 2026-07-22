@@ -58,6 +58,10 @@ final class AppSettings: ObservableObject {
         didSet { defaults.set(switcherTileContent.rawValue, forKey: SwitcherTileContent.defaultsKey) }
     }
 
+    /// Fallback hex colors when nothing's been persisted yet.
+    private static let defaultUploadColorHex = "#FDD464FF"
+    private static let defaultDownloadColorHex = "#A4FFB1FF"
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -67,8 +71,10 @@ final class AppSettings: ObservableObject {
         clipboardHistoryCapacity = defaults.object(forKey: Keys.clipboardHistoryCapacity) as? Int ?? 20
         clipboardHistoryReorderOnPaste = defaults.object(forKey: Keys.clipboardHistoryReorderOnPaste) as? Bool ?? true
         networkSpeedEnabled = defaults.object(forKey: Keys.networkSpeedEnabled) as? Bool ?? true
-        networkSpeedUploadColor = defaults.string(forKey: Keys.networkSpeedUploadColorHex).flatMap(ColorHex.color(fromHex:)) ?? .yellow
-        networkSpeedDownloadColor = defaults.string(forKey: Keys.networkSpeedDownloadColorHex).flatMap(ColorHex.color(fromHex:)) ?? .mint
+        networkSpeedUploadColor = defaults.string(forKey: Keys.networkSpeedUploadColorHex).flatMap(ColorHex.color(fromHex:))
+            ?? ColorHex.color(fromHex: Self.defaultUploadColorHex) ?? .yellow
+        networkSpeedDownloadColor = defaults.string(forKey: Keys.networkSpeedDownloadColorHex).flatMap(ColorHex.color(fromHex:))
+            ?? ColorHex.color(fromHex: Self.defaultDownloadColorHex) ?? .mint
         claudeUsageEnabled = defaults.object(forKey: Keys.claudeUsageEnabled) as? Bool ?? true
         switcherStyle = defaults.string(forKey: SwitcherStyle.defaultsKey).flatMap(SwitcherStyle.init) ?? .horizontal
         switcherSize = defaults.string(forKey: SwitcherSize.defaultsKey).flatMap(SwitcherSize.init) ?? .medium

@@ -82,7 +82,7 @@ private struct NetworkSpeedGraphSection: View {
                     AxisTick()
                     AxisValueLabel {
                         if let raw = value.as(Double.self) {
-                            Text(NetworkRateFormatter.string(forBytesPerSecond: raw))
+                            Text(NetworkRateFormatter.string(forBytesPerSecond: raw, decimals: 0))
                         }
                     }
                 }

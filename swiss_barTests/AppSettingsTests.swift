@@ -110,10 +110,10 @@ struct AppSettingsTests {
         #expect(reloaded.clipboardHistoryReorderOnPaste == false)
     }
 
-    @Test func networkSpeedColorsDefaultToYellowAndMint() {
+    @Test func networkSpeedColorsDefaultToConfiguredHexValues() {
         let settings = AppSettings(defaults: makeDefaults())
-        #expect(settings.networkSpeedUploadColor == .yellow)
-        #expect(settings.networkSpeedDownloadColor == .mint)
+        #expect(ColorHex.hexString(from: settings.networkSpeedUploadColor) == "#FDD464FF")
+        #expect(ColorHex.hexString(from: settings.networkSpeedDownloadColor) == "#A4FFB1FF")
     }
 
     @Test func networkSpeedColorsPersist() {

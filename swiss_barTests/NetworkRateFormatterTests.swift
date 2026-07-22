@@ -37,4 +37,9 @@ struct NetworkRateFormatterTests {
     @Test func formatsGigabytesPerSecond() {
         #expect(NetworkRateFormatter.string(forBytesPerSecond: 2_147_483_648) == "2.00 GB/s")
     }
+
+    @Test func explicitZeroDecimalsRoundsToWholeNumber() {
+        #expect(NetworkRateFormatter.string(forBytesPerSecond: 6900, decimals: 0) == "7 KB/s")
+        #expect(NetworkRateFormatter.string(forBytesPerSecond: 12_400_000, decimals: 0) == "12 MB/s")
+    }
 }
