@@ -22,6 +22,8 @@ final class AppSettings: ObservableObject {
         static let networkSpeedUploadColorHex = "feature.networkSpeed.uploadColorHex"
         static let networkSpeedDownloadColorHex = "feature.networkSpeed.downloadColorHex"
         static let claudeUsageEnabled = "feature.claudeUsage.enabled"
+        static let claudeUsageShowWeeklyInMenuBar = "feature.claudeUsage.showWeeklyInMenuBar"
+        static let claudeUsageCLICommand = "feature.claudeUsage.cliCommand"
     }
 
     @Published var windowSwitcherEnabled: Bool {
@@ -47,6 +49,18 @@ final class AppSettings: ObservableObject {
     }
     @Published var claudeUsageEnabled: Bool {
         didSet { defaults.set(claudeUsageEnabled, forKey: Keys.claudeUsageEnabled) }
+    }
+    @Published var claudeUsageMenuBarStyle: ClaudeUsageMenuBarStyle {
+        didSet { defaults.set(claudeUsageMenuBarStyle.rawValue, forKey: ClaudeUsageMenuBarStyle.defaultsKey) }
+    }
+    @Published var claudeUsageShowWeeklyInMenuBar: Bool {
+        didSet { defaults.set(claudeUsageShowWeeklyInMenuBar, forKey: Keys.claudeUsageShowWeeklyInMenuBar) }
+    }
+    /// Executable name (resolved via the login shell's PATH, so a bare name works the same as a
+    /// full path) or absolute path - lets a user with multiple Claude Code installs (e.g.
+    /// `claude-work`, `claude-personal`) point the usage monitor at the right one.
+    @Published var claudeUsageCLICommand: String {
+        didSet { defaults.set(claudeUsageCLICommand, forKey: Keys.claudeUsageCLICommand) }
     }
     @Published var switcherStyle: SwitcherStyle {
         didSet { defaults.set(switcherStyle.rawValue, forKey: SwitcherStyle.defaultsKey) }
@@ -76,6 +90,9 @@ final class AppSettings: ObservableObject {
         networkSpeedDownloadColor = defaults.string(forKey: Keys.networkSpeedDownloadColorHex).flatMap(ColorHex.color(fromHex:))
             ?? ColorHex.color(fromHex: Self.defaultDownloadColorHex) ?? .mint
         claudeUsageEnabled = defaults.object(forKey: Keys.claudeUsageEnabled) as? Bool ?? true
+        claudeUsageMenuBarStyle = defaults.string(forKey: ClaudeUsageMenuBarStyle.defaultsKey).flatMap(ClaudeUsageMenuBarStyle.init) ?? .numbers
+        claudeUsageShowWeeklyInMenuBar = defaults.object(forKey: Keys.claudeUsageShowWeeklyInMenuBar) as? Bool ?? true
+        claudeUsageCLICommand = defaults.string(forKey: Keys.claudeUsageCLICommand) ?? "claude"
         switcherStyle = defaults.string(forKey: SwitcherStyle.defaultsKey).flatMap(SwitcherStyle.init) ?? .horizontal
         switcherSize = defaults.string(forKey: SwitcherSize.defaultsKey).flatMap(SwitcherSize.init) ?? .medium
         switcherTileContent = defaults.string(forKey: SwitcherTileContent.defaultsKey).flatMap(SwitcherTileContent.init) ?? .appIcon

@@ -104,7 +104,21 @@ private struct ClaudeUsageSettingsTab: View {
     var body: some View {
         Form {
             Toggle("Enable Claude usage indicator", isOn: $settings.claudeUsageEnabled)
-            ComingSoonNote()
+            Picker("Menu bar style", selection: $settings.claudeUsageMenuBarStyle) {
+                Text("Numbers").tag(ClaudeUsageMenuBarStyle.numbers)
+                Text("Progress Bars").tag(ClaudeUsageMenuBarStyle.progressBars)
+            }
+            .disabled(!settings.claudeUsageEnabled)
+            Toggle("Show weekly usage in menu bar", isOn: $settings.claudeUsageShowWeeklyInMenuBar)
+                .disabled(!settings.claudeUsageEnabled)
+            TextField("CLI command", text: $settings.claudeUsageCLICommand, prompt: Text("claude"))
+                .disabled(!settings.claudeUsageEnabled)
+            Text("The command run to fetch usage (\"claude -p '/usage'\"). Change this if you have more than one Claude Code install, e.g. \"claude-work\".")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text("Shows live Claude Code session/weekly usage as a separate menu bar item, colored green/yellow/red by how close you are to the limit. Click it for the full usage breakdown.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .formStyle(.grouped)
     }

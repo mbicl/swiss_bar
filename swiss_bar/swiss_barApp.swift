@@ -38,6 +38,15 @@ struct swiss_barApp: App {
         }
         .menuBarExtraStyle(.window)
 
+        // Same `.constant(...)` rationale as above - never a two-way binding to a `@Published`
+        // property on `isInserted:`.
+        MenuBarExtra(isInserted: .constant(settings.claudeUsageEnabled)) {
+            ClaudeUsageDropdownView(monitor: appDelegate.claudeUsageMonitor)
+        } label: {
+            ClaudeUsageMenuBarLabel(imageRenderer: appDelegate.claudeUsageMenuBarImageRenderer)
+        }
+        .menuBarExtraStyle(.window)
+
         Settings {
             SettingsView(settings: settings, clipboardHistoryStore: appDelegate.clipboardHistoryStore)
         }

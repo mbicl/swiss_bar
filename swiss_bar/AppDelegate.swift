@@ -11,6 +11,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let keyboardCleaningManager = KeyboardCleaningManager()
     let networkSpeedMonitor = NetworkSpeedMonitor()
     lazy var networkSpeedMenuBarImageRenderer = NetworkSpeedMenuBarImageRenderer(monitor: networkSpeedMonitor, settings: settings)
+    lazy var claudeUsageMonitor = ClaudeUsageMonitor(settings: settings)
+    lazy var claudeUsageMenuBarImageRenderer = ClaudeUsageMenuBarImageRenderer(monitor: claudeUsageMonitor, settings: settings)
 
     private let settings = AppSettings.shared
     private let switcherViewModel = SwitcherViewModel()
@@ -86,6 +88,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
 
+        // Emits the current value on subscribe, so this also performs the initial install.
+        settings.$claudeUsageEnabled
+            .removeDuplicates()
+            .sink { [weak self] enabled in
+                guard let self else { return }
+                if enabled {
+                    claudeUsageMonitor.start()
+                } else {
+                    claudeUsageMonitor.stop()
+                }
+            }
+            .store(in: &cancellables)
+
         // Start capturing window AX elements at creation time so windows on other Spaces stay
         // activatable regardless of whether their Space has been displayed.
         WindowTracker.shared.start()
@@ -147,6 +162,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         clipboardHotkeyTap.uninstall()
         clipboardMonitor.stop()
         networkSpeedMonitor.stop()
+        claudeUsageMonitor.stop()
         spaceChangeRefresh?.cancel()
     }
 
