@@ -23,7 +23,6 @@ struct AppSettingsTests {
 
         #expect(settings.windowSwitcherEnabled)
         #expect(settings.clipboardHistoryEnabled)
-        #expect(settings.keyboardCleaningEnabled)
         #expect(settings.networkSpeedEnabled)
         #expect(settings.claudeUsageEnabled)
     }

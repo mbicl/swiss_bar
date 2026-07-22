@@ -15,7 +15,6 @@ final class AppSettings: ObservableObject {
     enum Keys {
         static let windowSwitcherEnabled = "feature.windowSwitcher.enabled"
         static let clipboardHistoryEnabled = "feature.clipboardHistory.enabled"
-        static let keyboardCleaningEnabled = "feature.keyboardCleaning.enabled"
         static let networkSpeedEnabled = "feature.networkSpeed.enabled"
         static let claudeUsageEnabled = "feature.claudeUsage.enabled"
     }
@@ -25,9 +24,6 @@ final class AppSettings: ObservableObject {
     }
     @Published var clipboardHistoryEnabled: Bool {
         didSet { defaults.set(clipboardHistoryEnabled, forKey: Keys.clipboardHistoryEnabled) }
-    }
-    @Published var keyboardCleaningEnabled: Bool {
-        didSet { defaults.set(keyboardCleaningEnabled, forKey: Keys.keyboardCleaningEnabled) }
     }
     @Published var networkSpeedEnabled: Bool {
         didSet { defaults.set(networkSpeedEnabled, forKey: Keys.networkSpeedEnabled) }
@@ -51,7 +47,6 @@ final class AppSettings: ObservableObject {
         self.defaults = defaults
         windowSwitcherEnabled = defaults.object(forKey: Keys.windowSwitcherEnabled) as? Bool ?? true
         clipboardHistoryEnabled = defaults.object(forKey: Keys.clipboardHistoryEnabled) as? Bool ?? true
-        keyboardCleaningEnabled = defaults.object(forKey: Keys.keyboardCleaningEnabled) as? Bool ?? true
         networkSpeedEnabled = defaults.object(forKey: Keys.networkSpeedEnabled) as? Bool ?? true
         claudeUsageEnabled = defaults.object(forKey: Keys.claudeUsageEnabled) as? Bool ?? true
         switcherStyle = defaults.string(forKey: SwitcherStyle.defaultsKey).flatMap(SwitcherStyle.init) ?? .horizontal

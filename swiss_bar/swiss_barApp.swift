@@ -13,7 +13,10 @@ struct swiss_barApp: App {
 
     var body: some Scene {
         MenuBarExtra("swiss_bar", systemImage: "square.stack") {
-            MenuBarMenuView(permissionManager: appDelegate.permissionManager)
+            MenuBarMenuView(
+                permissionManager: appDelegate.permissionManager,
+                keyboardCleaningManager: appDelegate.keyboardCleaningManager
+            )
         }
         Settings {
             SettingsView(settings: AppSettings.shared)

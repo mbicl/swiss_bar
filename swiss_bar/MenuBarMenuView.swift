@@ -8,6 +8,7 @@ import SwiftUI
 
 struct MenuBarMenuView: View {
     @ObservedObject var permissionManager: AccessibilityPermissionManager
+    @ObservedObject var keyboardCleaningManager: KeyboardCleaningManager
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
@@ -35,6 +36,14 @@ struct MenuBarMenuView: View {
             Button("Open Screen Recording Settings…") {
                 permissionManager.openScreenRecordingSettings()
             }
+        }
+        Toggle("Keyboard Cleaning Mode", isOn: Binding(
+            get: { keyboardCleaningManager.isActive },
+            set: { _ in keyboardCleaningManager.toggle() }
+        ))
+        .disabled(!permissionManager.isAccessibilityTrusted)
+        if keyboardCleaningManager.isActive {
+            Text("Keyboard input is disabled — toggle off to restore it.")
         }
         Button("Settings…") {
             // An accessory (LSUIElement) app isn't frontmost when the menu item is clicked, so

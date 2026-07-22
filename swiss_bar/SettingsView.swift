@@ -14,8 +14,6 @@ struct SettingsView: View {
                 .tabItem { Label("Window Switcher", systemImage: "rectangle.stack") }
             ClipboardHistorySettingsTab(settings: settings)
                 .tabItem { Label("Clipboard", systemImage: "doc.on.clipboard") }
-            KeyboardCleaningSettingsTab(settings: settings)
-                .tabItem { Label("Keyboard Cleaning", systemImage: "keyboard") }
             NetworkSpeedSettingsTab(settings: settings)
                 .tabItem { Label("Network Speed", systemImage: "speedometer") }
             ClaudeUsageSettingsTab(settings: settings)
@@ -64,18 +62,6 @@ private struct ClipboardHistorySettingsTab: View {
     var body: some View {
         Form {
             Toggle("Enable clipboard history", isOn: $settings.clipboardHistoryEnabled)
-            ComingSoonNote()
-        }
-        .formStyle(.grouped)
-    }
-}
-
-private struct KeyboardCleaningSettingsTab: View {
-    @ObservedObject var settings: AppSettings
-
-    var body: some View {
-        Form {
-            Toggle("Enable keyboard cleaning mode", isOn: $settings.keyboardCleaningEnabled)
             ComingSoonNote()
         }
         .formStyle(.grouped)

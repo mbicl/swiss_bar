@@ -8,6 +8,7 @@ import Combine
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let permissionManager = AccessibilityPermissionManager()
+    let keyboardCleaningManager = KeyboardCleaningManager()
 
     private let settings = AppSettings.shared
     private let switcherViewModel = SwitcherViewModel()
@@ -78,6 +79,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         eventTapManager.uninstall()
+        keyboardCleaningManager.stop()
         spaceChangeRefresh?.cancel()
     }
 
