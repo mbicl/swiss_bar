@@ -25,7 +25,7 @@ struct swiss_barApp: App {
         MenuBarExtra(isInserted: $settings.networkSpeedEnabled) {
             NetworkSpeedGraphView(monitor: appDelegate.networkSpeedMonitor, settings: settings)
         } label: {
-            NetworkSpeedMenuBarLabel(monitor: appDelegate.networkSpeedMonitor, settings: settings)
+            NetworkSpeedMenuBarLabel(imageRenderer: appDelegate.networkSpeedMenuBarImageRenderer)
         }
         .menuBarExtraStyle(.window)
 

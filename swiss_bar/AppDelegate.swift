@@ -10,6 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let permissionManager = AccessibilityPermissionManager()
     let keyboardCleaningManager = KeyboardCleaningManager()
     let networkSpeedMonitor = NetworkSpeedMonitor()
+    lazy var networkSpeedMenuBarImageRenderer = NetworkSpeedMenuBarImageRenderer(monitor: networkSpeedMonitor, settings: settings)
 
     private let settings = AppSettings.shared
     private let switcherViewModel = SwitcherViewModel()
