@@ -9,8 +9,8 @@ cleaning mode, and live network/Claude usage indicators, all in one lightweight 
   windows instead of apps, with MRU-based ordering and arrow-key navigation.
 - [ ] **Clipboard history** — records copied text/images (FlyCut-style); paste from history via
   Cmd+Shift+V.
-- [ ] **Keyboard cleaning mode** — temporarily disables all keyboard input so the keyboard can be
-  physically cleaned.
+- [x] **Keyboard cleaning mode** — temporarily disables all keyboard input so the keyboard can be
+  physically cleaned, via a live switch in the menu-bar dropdown.
 - [ ] **Network speed indicator** — shows live download/upload speed in the menubar.
 - [ ] **Claude usage indicator** — shows Claude usage (session, weekly, Fable 5 if present),
   similar to the Claude web app.

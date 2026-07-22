@@ -21,8 +21,9 @@ The app is `LSUIElement` (agent app: no Dock icon, no app menu bar) and runs uns
 - `swiss_bar/swiss_barApp.swift` — `@main` App entry point; `MenuBarExtra` scene hosting `MenuBarMenuView`, wired to `AppDelegate` via `@NSApplicationDelegateAdaptor`.
 - `swiss_bar/AppDelegate.swift` — owns feature-level singletons (event tap, overlay, permissions) and their lifecycle; wire new features in here.
 - `swiss_bar/AccessibilityPermissionManager.swift` — tracks Accessibility/Input Monitoring TCC grant state, used by any feature needing global input/window access.
-- `swiss_bar/MenuBarMenuView.swift` — the menu bar dropdown content.
+- `swiss_bar/MenuBarMenuView.swift` — the menu bar dropdown content. Rendered as a custom floating panel via `.menuBarExtraStyle(.window)` (set in `swiss_barApp.swift`), not a native `NSMenu` — needed so on/off state (e.g. keyboard cleaning) can show a real system switch instead of a checkmark. Rows close the panel explicitly (`NSApp.keyWindow?.close()`) before acting, to replicate native menu dismiss-on-click behavior.
 - `swiss_bar/WindowSwitcher/` — window switcher feature (see `ROADMAP.md` for the architecture summary): `EventTapManager` (global Cmd+Tab interception), `WindowEnumerator`/`CandidateWindow` (AX-based window listing), `WindowActivator` (raise/focus), `SwitcherViewModel`/`OverlayController`/`SwitcherOverlayView` (the HUD). Each roadmap feature gets its own subdirectory like this one, isolated from the others.
+- `swiss_bar/KeyboardCleaning/` — keyboard cleaning mode feature (see `ROADMAP.md`): `KeyboardCleaningManager`, a global `CGEventTap` that swallows keyboard input while active, toggled from a switch in the menu bar dropdown (no Settings tab).
 - `swiss_bar/Assets.xcassets` — app icon and accent color assets.
 - `swiss_barTests/` — unit tests using the Swift Testing framework (`import Testing`, `@Test` macro), not XCTest.
 - `swiss_barUITests/` — UI tests using XCTest/XCUIApplication (launch and performance tests).
