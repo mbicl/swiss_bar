@@ -215,12 +215,7 @@ extension AppDelegate: ClipboardHotkeyTapDelegate {
             clipboardHotkeyTap.deactivate()
             return
         }
-        let items = clipboardHistoryStore.items
-        clipboardOverlayController.show(with: items)
-        // Index 0 is already the live pasteboard content (reachable via plain ⌘V with no picker),
-        // so a bare chord-then-immediate-release should land on the next-older item to be useful -
-        // same rationale as switcherDidActivate's `count > 1 ? 1 : 0`.
-        clipboardOverlayController.updateSelection(items.count > 1 ? 1 : 0)
+        clipboardOverlayController.show(with: clipboardHistoryStore.items)
     }
 
     func clipboardPickerDidMove(down: Bool) {
