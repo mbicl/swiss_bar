@@ -63,6 +63,15 @@ final class ClipboardHistoryStore: ObservableObject {
         persistence.save(updated)
     }
 
+    /// Drops every item and deletes their persisted image files. No-op (and no disk write) if
+    /// history is already empty.
+    func clear() {
+        guard !items.isEmpty else { return }
+        persistence.deleteImageFiles(for: items)
+        items = []
+        persistence.save(items)
+    }
+
     nonisolated static func trimmed(_ items: [ClipboardItem], toCapacity capacity: Int) -> [ClipboardItem] {
         Array(items.prefix(max(capacity, 0)))
     }

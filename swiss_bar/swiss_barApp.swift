@@ -15,12 +15,13 @@ struct swiss_barApp: App {
         MenuBarExtra("swiss_bar", systemImage: "square.stack") {
             MenuBarMenuView(
                 permissionManager: appDelegate.permissionManager,
-                keyboardCleaningManager: appDelegate.keyboardCleaningManager
+                keyboardCleaningManager: appDelegate.keyboardCleaningManager,
+                clipboardHistoryStore: appDelegate.clipboardHistoryStore
             )
         }
         .menuBarExtraStyle(.window)
         Settings {
-            SettingsView(settings: AppSettings.shared)
+            SettingsView(settings: AppSettings.shared, clipboardHistoryStore: appDelegate.clipboardHistoryStore)
         }
     }
 }

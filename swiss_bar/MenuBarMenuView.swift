@@ -15,6 +15,7 @@ import SwiftUI
 struct MenuBarMenuView: View {
     @ObservedObject var permissionManager: AccessibilityPermissionManager
     @ObservedObject var keyboardCleaningManager: KeyboardCleaningManager
+    @ObservedObject var clipboardHistoryStore: ClipboardHistoryStore
     @Environment(\.openSettings) private var openSettings
 
     var body: some View {
@@ -72,6 +73,13 @@ struct MenuBarMenuView: View {
             }
 
             Divider()
+
+            if !clipboardHistoryStore.items.isEmpty {
+                MenuRow("Clear Clipboard History") {
+                    clipboardHistoryStore.clear()
+                }
+                Divider()
+            }
 
             MenuRow("Settings…", keyboardShortcut: ",") {
                 // An accessory (LSUIElement) app isn't frontmost when the row is clicked, so

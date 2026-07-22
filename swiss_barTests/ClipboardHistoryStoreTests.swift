@@ -3,6 +3,7 @@
 //  swiss_barTests
 //
 
+import AppKit
 import Foundation
 import Testing
 @testable import swiss_bar
@@ -23,6 +24,15 @@ struct ClipboardHistoryStoreTests {
     private func text(of item: ClipboardItem) -> String? {
         if case .text(let value) = item.kind { return value }
         return nil
+    }
+
+    private func makeTestImage() -> NSImage {
+        let image = NSImage(size: NSSize(width: 4, height: 4))
+        image.lockFocus()
+        NSColor.blue.setFill()
+        NSRect(x: 0, y: 0, width: 4, height: 4).fill()
+        image.unlockFocus()
+        return image
     }
 
     @Test func trimmedDropsOldestBeyondCapacity() {
@@ -94,5 +104,28 @@ struct ClipboardHistoryStoreTests {
         let before = store.items
         store.promoteToTop(before[0])
         #expect(store.items == before)
+    }
+
+    @Test func clearRemovesAllItemsAndDeletesImageFiles() {
+        let persistence = makePersistence()
+        let store = ClipboardHistoryStore(persistence: persistence, capacity: 10)
+        store.add(makeItem("a"))
+        guard let (fileName, pixelSize, pngData) = persistence.writeImageFile(makeTestImage()) else {
+            Issue.record("writeImageFile failed")
+            return
+        }
+        store.add(ClipboardItem(id: UUID(), date: Date(), contentHash: ClipboardContentHasher.hash(pngData), kind: .image(fileName: fileName, pixelSize: pixelSize)))
+
+        store.clear()
+
+        #expect(store.items.isEmpty)
+        #expect(persistence.loadImage(fileName: fileName) == nil)
+        #expect(persistence.load().isEmpty)
+    }
+
+    @Test func clearOnEmptyStoreIsNoOp() {
+        let store = ClipboardHistoryStore(persistence: makePersistence(), capacity: 10)
+        store.clear()
+        #expect(store.items.isEmpty)
     }
 }

@@ -17,7 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var cancellables: Set<AnyCancellable> = []
 
     private let clipboardHistoryPersistence = ClipboardHistoryPersistence()
-    private lazy var clipboardHistoryStore = ClipboardHistoryStore(
+    lazy var clipboardHistoryStore = ClipboardHistoryStore(
         persistence: clipboardHistoryPersistence, capacity: settings.clipboardHistoryCapacity
     )
     private lazy var clipboardMonitor = ClipboardMonitor(store: clipboardHistoryStore, persistence: clipboardHistoryPersistence)

@@ -7,12 +7,13 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
+    @ObservedObject var clipboardHistoryStore: ClipboardHistoryStore
 
     var body: some View {
         TabView {
             WindowSwitcherSettingsTab(settings: settings)
                 .tabItem { Label("Window Switcher", systemImage: "rectangle.stack") }
-            ClipboardHistorySettingsTab(settings: settings)
+            ClipboardHistorySettingsTab(settings: settings, clipboardHistoryStore: clipboardHistoryStore)
                 .tabItem { Label("Clipboard", systemImage: "doc.on.clipboard") }
             NetworkSpeedSettingsTab(settings: settings)
                 .tabItem { Label("Network Speed", systemImage: "speedometer") }
@@ -58,6 +59,7 @@ private struct WindowSwitcherSettingsTab: View {
 
 private struct ClipboardHistorySettingsTab: View {
     @ObservedObject var settings: AppSettings
+    @ObservedObject var clipboardHistoryStore: ClipboardHistoryStore
 
     var body: some View {
         Form {
@@ -66,6 +68,10 @@ private struct ClipboardHistorySettingsTab: View {
                 .disabled(!settings.clipboardHistoryEnabled)
             Toggle("Move pasted item to top of history", isOn: $settings.clipboardHistoryReorderOnPaste)
                 .disabled(!settings.clipboardHistoryEnabled)
+            Button("Clear History", role: .destructive) {
+                clipboardHistoryStore.clear()
+            }
+            .disabled(clipboardHistoryStore.items.isEmpty)
             Text("Records copied text and images. Paste from history with ⌘⇧V. Oldest items are removed once this many are stored.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
