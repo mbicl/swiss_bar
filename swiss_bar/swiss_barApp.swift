@@ -18,6 +18,7 @@ struct swiss_barApp: App {
                 keyboardCleaningManager: appDelegate.keyboardCleaningManager
             )
         }
+        .menuBarExtraStyle(.window)
         Settings {
             SettingsView(settings: AppSettings.shared)
         }
