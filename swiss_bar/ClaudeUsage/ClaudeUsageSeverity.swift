@@ -16,7 +16,7 @@ enum ClaudeUsageThreshold {
     nonisolated static func severity(forPercent percent: Int) -> ClaudeUsageSeverity {
         if percent <= 75 {
             return .good
-        } else if percent <= 80 {
+        } else if percent <= 90 {
             return .warning
         } else {
             return .critical
