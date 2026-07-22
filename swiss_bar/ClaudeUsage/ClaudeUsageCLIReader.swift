@@ -19,9 +19,13 @@ enum ClaudeUsageCLIReader {
     /// live - for interactive shells; a login-only, non-interactive `-l -c` skips it, confirmed by
     /// this failing to find a real `~/.local/bin`-installed `claude` until `-i` was added. `command`
     /// is user-configurable (see `AppSettings.claudeUsageCLICommand`) since some users have more than
-    /// one Claude Code install (e.g. `claude-work`, `claude-personal`) - it's shell-quoted into the
-    /// shell string rather than split into argv so a configured value still resolves the same way a
-    /// real shell would.
+    /// one Claude Code install via a shell **alias** (e.g. `alias claude-work='CLAUDE_CONFIG_DIR=~/.claude-work claude'`)
+    /// - it's deliberately interpolated *unquoted* into the shell string. Quoting it (e.g.
+    /// `'\(command)'`) would resolve a plain PATH executable fine but silently suppresses zsh's
+    /// alias expansion, breaking exactly this multi-install use case (confirmed: `'claude-work'`
+    /// failed to resolve while unquoted `claude-work` worked). This does mean `command` is trusted
+    /// shell syntax - acceptable here since it's a local Settings value only the user themselves
+    /// types in, the same trust level as typing it into their own Terminal.
     ///
     /// Returns the parsed `result` field of the JSON envelope on success - the same prose `/usage`
     /// prints in a terminal, with JSON's `\n`/`\"`/unicode escaping properly decoded (unlike the raw
@@ -33,8 +37,7 @@ enum ClaudeUsageCLIReader {
         await withCheckedContinuation { continuation in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-            let escapedCommand = command.replacingOccurrences(of: "'", with: "'\\''")
-            process.arguments = ["-l", "-i", "-c", "'\(escapedCommand)' -p '/usage' --output-format json"]
+            process.arguments = ["-l", "-i", "-c", "\(command) -p '/usage' --output-format json"]
 
             let stdout = Pipe()
             process.standardOutput = stdout

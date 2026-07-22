@@ -14,6 +14,7 @@ struct ClaudeUsageDropdownView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                updateButton
                 if let snapshot = monitor.snapshot {
                     headline(snapshot: snapshot)
                     if let contributing = snapshot.contributing {
@@ -35,6 +36,25 @@ struct ClaudeUsageDropdownView: View {
             .padding()
         }
         .frame(width: 320, height: 380)
+    }
+
+    private var updateButton: some View {
+        HStack {
+            Spacer()
+            Button {
+                monitor.refreshNow()
+            } label: {
+                HStack(spacing: 4) {
+                    if monitor.isRefreshing {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    Text("Update Now")
+                }
+            }
+            .disabled(monitor.isRefreshing)
+        }
     }
 
     private func headline(snapshot: ClaudeUsageSnapshot) -> some View {
