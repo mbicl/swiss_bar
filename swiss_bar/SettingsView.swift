@@ -113,7 +113,7 @@ private struct ClaudeUsageSettingsTab: View {
                 .disabled(!settings.claudeUsageEnabled)
             TextField("CLI command", text: $settings.claudeUsageCLICommand, prompt: Text("claude"))
                 .disabled(!settings.claudeUsageEnabled)
-            Text("The command run to fetch usage (\"claude -p '/usage'\"). Change this if you have more than one Claude Code install, e.g. \"claude-work\".")
+            Text("The command run to fetch usage (\"<command> -p '/usage'\"). If you have more than one Claude Code install set up as a shell alias, enter the underlying command instead of the alias name, e.g. \"CLAUDE_CONFIG_DIR=~/.claude-work claude\" rather than \"claude-work\" - this field can't see your shell's alias definitions.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Text("Shows live Claude Code session/weekly usage as a separate menu bar item, colored green/yellow/red by how close you are to the limit. Click it for the full usage breakdown.")

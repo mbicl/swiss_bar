@@ -11,21 +11,27 @@ import Foundation
 enum ClaudeUsageCLIReader {
     private static let timeout: TimeInterval = 10
 
-    /// Runs `<command> -p "/usage" --output-format json` inside a login *and interactive* shell so
-    /// `command` resolves exactly as it would when the user types it in their own Terminal - a bare
-    /// `Process` exec gets the minimal environment GUI apps launch with, which often can't find CLI
-    /// tools installed via nvm/homebrew/`~/.local/bin`. Both `-l` (login) *and* `-i` (interactive)
-    /// are required: zsh only sources `~/.zshrc` - where PATH additions like `~/.local/bin` commonly
-    /// live - for interactive shells; a login-only, non-interactive `-l -c` skips it, confirmed by
-    /// this failing to find a real `~/.local/bin`-installed `claude` until `-i` was added. `command`
-    /// is user-configurable (see `AppSettings.claudeUsageCLICommand`) since some users have more than
-    /// one Claude Code install via a shell **alias** (e.g. `alias claude-work='CLAUDE_CONFIG_DIR=~/.claude-work claude'`)
-    /// - it's deliberately interpolated *unquoted* into the shell string. Quoting it (e.g.
-    /// `'\(command)'`) would resolve a plain PATH executable fine but silently suppresses zsh's
-    /// alias expansion, breaking exactly this multi-install use case (confirmed: `'claude-work'`
-    /// failed to resolve while unquoted `claude-work` worked). This does mean `command` is trusted
-    /// shell syntax - acceptable here since it's a local Settings value only the user themselves
-    /// types in, the same trust level as typing it into their own Terminal.
+    /// Runs `<command> -p "/usage" --output-format json` inside a *login-only* (non-interactive)
+    /// shell, with the common install directories for user-level CLI tools prepended to `PATH`
+    /// ourselves - a bare `Process` exec gets the minimal environment GUI apps launch with, which
+    /// often can't find tools installed via `~/.local/bin`/homebrew.
+    ///
+    /// Deliberately **not** `-i` (interactive): that was tried first to source `~/.zshrc` (where
+    /// PATH additions like `~/.local/bin` commonly live) - it worked, but it also runs *every* other
+    /// interactive-shell customization in `~/.zshrc` (oh-my-zsh plugins, iTerm2 shell integration,
+    /// prompt themes, etc.), one of which triggered an unrelated macOS permission prompt (Apple
+    /// Music/media library access) attributed to this app - a real, unacceptable side effect for a
+    /// background usage poll. Explicitly exporting the well-known install directories ourselves
+    /// solves the same PATH problem without sourcing any of the user's actual shell config.
+    ///
+    /// **Trade-off:** shell *aliases* (e.g. `alias claude-work='CLAUDE_CONFIG_DIR=~/.claude-work claude'`)
+    /// only exist inside files like `.zshrc` that we no longer source, so a bare alias name no longer
+    /// resolves. This isn't a loss of capability though - the same effect is expressed as plain,
+    /// alias-free shell syntax (`CLAUDE_CONFIG_DIR=~/.claude-work claude`), which works here exactly
+    /// as it would in Terminal. `command` is user-configurable (see `AppSettings.claudeUsageCLICommand`)
+    /// for exactly this multi-install case, and is interpolated unquoted so env-var-prefixed forms
+    /// like that resolve correctly - trusted shell syntax, acceptable since it's a local Settings
+    /// value only the user themselves types in.
     ///
     /// Returns the parsed `result` field of the JSON envelope on success - the same prose `/usage`
     /// prints in a terminal, with JSON's `\n`/`\"`/unicode escaping properly decoded (unlike the raw
@@ -37,7 +43,8 @@ enum ClaudeUsageCLIReader {
         await withCheckedContinuation { continuation in
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/zsh")
-            process.arguments = ["-l", "-i", "-c", "\(command) -p '/usage' --output-format json"]
+            let pathExport = #"export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH""#
+            process.arguments = ["-l", "-c", "\(pathExport); \(command) -p '/usage' --output-format json"]
 
             let stdout = Pipe()
             process.standardOutput = stdout
