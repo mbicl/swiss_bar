@@ -54,3 +54,32 @@ xcodebuild test -project swiss_bar.xcodeproj -scheme swiss_bar -destination 'pla
 ```
 
 Note: `swiss_barTests` uses the Swift Testing framework (`@Test`), while `swiss_barUITests` uses XCTest (`XCTestCase`) — the two are not interchangeable and use different assertion styles (`#expect` vs. `XCTAssert*`).
+
+## Releasing
+
+Pushing a tag matching `v*` triggers `.github/workflows/release.yml`, which runs the unit tests,
+builds Release-configuration, signs with the self-signed certificate, packages a DMG + zip, and
+publishes a GitHub Release — no need to open that workflow file to remember how it works. To cut
+a release:
+
+1. Make sure `main` is clean and pushed: `git status`, `git push origin main`.
+2. Pick the next version: `git tag -l --sort=-v:refname | head -1` for the latest, then bump —
+   minor for new features, patch for fixes/small changes (no major yet).
+3. Tag and push (this alone starts the workflow — nothing else to trigger manually):
+   ```sh
+   git tag -a vX.Y.Z -m "swiss_bar X.Y.Z: <short summary>"
+   git push origin vX.Y.Z
+   ```
+4. Watch it: `gh run list --workflow=release.yml --limit 1` for the run ID, then
+   `gh run watch <run-id> --exit-status`.
+5. **The workflow's own release notes are static installation instructions only — they say
+   nothing about what changed in that version.** Always follow up by editing the release to
+   prepend a "What's new" section (features and fixes since the previous tag — summarize
+   `git log <previous-tag>..vX.Y.Z --oneline`, don't just paste raw commit subjects) above that
+   static text, so every published release documents what's actually in it:
+   ```sh
+   gh release view vX.Y.Z --json body -q .body > /tmp/notes.md   # existing static notes
+   # prepend a "## What's new" bullet list to /tmp/notes.md, then:
+   gh release edit vX.Y.Z --notes-file /tmp/notes.md
+   ```
+6. Verify: `gh release view vX.Y.Z`.
