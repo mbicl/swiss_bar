@@ -15,6 +15,8 @@ final class AppSettings: ObservableObject {
     enum Keys {
         static let windowSwitcherEnabled = "feature.windowSwitcher.enabled"
         static let clipboardHistoryEnabled = "feature.clipboardHistory.enabled"
+        static let clipboardHistoryCapacity = "feature.clipboardHistory.capacity"
+        static let clipboardHistoryReorderOnPaste = "feature.clipboardHistory.reorderOnPaste"
         static let networkSpeedEnabled = "feature.networkSpeed.enabled"
         static let claudeUsageEnabled = "feature.claudeUsage.enabled"
     }
@@ -24,6 +26,12 @@ final class AppSettings: ObservableObject {
     }
     @Published var clipboardHistoryEnabled: Bool {
         didSet { defaults.set(clipboardHistoryEnabled, forKey: Keys.clipboardHistoryEnabled) }
+    }
+    @Published var clipboardHistoryCapacity: Int {
+        didSet { defaults.set(clipboardHistoryCapacity, forKey: Keys.clipboardHistoryCapacity) }
+    }
+    @Published var clipboardHistoryReorderOnPaste: Bool {
+        didSet { defaults.set(clipboardHistoryReorderOnPaste, forKey: Keys.clipboardHistoryReorderOnPaste) }
     }
     @Published var networkSpeedEnabled: Bool {
         didSet { defaults.set(networkSpeedEnabled, forKey: Keys.networkSpeedEnabled) }
@@ -47,6 +55,8 @@ final class AppSettings: ObservableObject {
         self.defaults = defaults
         windowSwitcherEnabled = defaults.object(forKey: Keys.windowSwitcherEnabled) as? Bool ?? true
         clipboardHistoryEnabled = defaults.object(forKey: Keys.clipboardHistoryEnabled) as? Bool ?? true
+        clipboardHistoryCapacity = defaults.object(forKey: Keys.clipboardHistoryCapacity) as? Int ?? 20
+        clipboardHistoryReorderOnPaste = defaults.object(forKey: Keys.clipboardHistoryReorderOnPaste) as? Bool ?? true
         networkSpeedEnabled = defaults.object(forKey: Keys.networkSpeedEnabled) as? Bool ?? true
         claudeUsageEnabled = defaults.object(forKey: Keys.claudeUsageEnabled) as? Bool ?? true
         switcherStyle = defaults.string(forKey: SwitcherStyle.defaultsKey).flatMap(SwitcherStyle.init) ?? .horizontal

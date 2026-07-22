@@ -16,6 +16,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let eventTapManager = EventTapManager()
     private var cancellables: Set<AnyCancellable> = []
 
+    private let clipboardHistoryPersistence = ClipboardHistoryPersistence()
+    private lazy var clipboardHistoryStore = ClipboardHistoryStore(
+        persistence: clipboardHistoryPersistence, capacity: settings.clipboardHistoryCapacity
+    )
+    private lazy var clipboardMonitor = ClipboardMonitor(store: clipboardHistoryStore, persistence: clipboardHistoryPersistence)
+    private let clipboardPickerViewModel = ClipboardPickerViewModel()
+    private lazy var clipboardOverlayController = ClipboardPickerOverlayController(
+        viewModel: clipboardPickerViewModel, persistence: clipboardHistoryPersistence
+    )
+    private let clipboardHotkeyTap = ClipboardHotkeyTapManager()
+    /// Tracks whether the Window Switcher HUD is currently up - ⌘ is held throughout a ⌘Tab
+    /// session, so ⌘⇧V is physically typeable mid-switch, and the clipboard picker must not open
+    /// on top of it.
+    private var isSwitcherActive = false
+
     /// Coalesces Space-change refreshes. `activeSpaceDidChangeNotification` fires when the
     /// transition begins, while AX window visibility is still in flux (the outgoing Space's
     /// windows are gone, the incoming Space's haven't arrived), so an immediate enumeration
@@ -26,6 +41,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         eventTapManager.delegate = self
+        clipboardHotkeyTap.delegate = self
+        clipboardOverlayController.onRowTapped = { [weak self] index in
+            self?.commitClipboardSelection(at: index)
+        }
+        clipboardOverlayController.onOutsideClick = { [weak self] in
+            self?.cancelClipboardPicker()
+        }
+
+        // Emits the current value on subscribe, so this also performs the initial install.
+        settings.$clipboardHistoryEnabled
+            .removeDuplicates()
+            .sink { [weak self] enabled in
+                guard let self else { return }
+                if enabled {
+                    clipboardHotkeyTap.install()
+                    clipboardMonitor.start()
+                } else {
+                    clipboardHotkeyTap.uninstall()
+                    clipboardMonitor.stop()
+                }
+            }
+            .store(in: &cancellables)
+
+        settings.$clipboardHistoryCapacity
+            .removeDuplicates()
+            .sink { [weak self] capacity in
+                self?.clipboardHistoryStore.setCapacity(capacity)
+            }
+            .store(in: &cancellables)
 
         // Start capturing window AX elements at creation time so windows on other Spaces stay
         // activatable regardless of whether their Space has been displayed.
@@ -45,11 +89,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             .store(in: &cancellables)
 
         permissionManager.onAccessibilityGranted = { [weak self] in
-            guard let self, settings.windowSwitcherEnabled else { return }
-            eventTapManager.install()
-            WindowEnumerator.warmElementCache()
-            WindowEnumerator.refreshCache()
-            WindowTracker.shared.seedMRU(WindowEnumerator.onScreenWindowIDsFrontToBack())
+            guard let self else { return }
+            if settings.windowSwitcherEnabled {
+                eventTapManager.install()
+                WindowEnumerator.warmElementCache()
+                WindowEnumerator.refreshCache()
+                WindowTracker.shared.seedMRU(WindowEnumerator.onScreenWindowIDsFrontToBack())
+            }
+            if settings.clipboardHistoryEnabled {
+                clipboardHotkeyTap.install()
+            }
         }
 
         // Cache AX elements for the windows visible right now, and again on every Space change -
@@ -80,7 +129,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         eventTapManager.uninstall()
         keyboardCleaningManager.stop()
+        clipboardHotkeyTap.uninstall()
+        clipboardMonitor.stop()
         spaceChangeRefresh?.cancel()
+    }
+
+    private func commitClipboardSelection(at index: Int) {
+        clipboardHotkeyTap.deactivate()
+        clipboardOverlayController.hide()
+        guard clipboardPickerViewModel.items.indices.contains(index) else { return }
+        let selected = clipboardPickerViewModel.items[index]
+        if settings.clipboardHistoryReorderOnPaste {
+            clipboardHistoryStore.promoteToTop(selected)
+        }
+        ClipboardPasteExecutor.paste(selected, monitor: clipboardMonitor, persistence: clipboardHistoryPersistence)
+    }
+
+    private func cancelClipboardPicker() {
+        clipboardHotkeyTap.deactivate()
+        clipboardOverlayController.hide()
     }
 
     private func scheduleSpaceChangeRefresh() {
@@ -101,6 +168,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 extension AppDelegate: EventTapManagerDelegate {
     func switcherDidActivate() {
+        isSwitcherActive = true
         // Cheap, AX-free re-order of the already-cached list - shows instantly and never risks
         // blocking the event-tap callback on a live AX enumeration (see WindowEnumerator.refreshCache).
         let candidates = WindowEnumerator.reorderedCache()
@@ -123,6 +191,7 @@ extension AppDelegate: EventTapManagerDelegate {
     }
 
     func switcherDidCommit() {
+        isSwitcherActive = false
         overlayController.hide()
         guard switcherViewModel.candidates.indices.contains(switcherViewModel.selectedIndex) else { return }
         let selected = switcherViewModel.candidates[switcherViewModel.selectedIndex]
@@ -134,7 +203,30 @@ extension AppDelegate: EventTapManagerDelegate {
     }
 
     func switcherDidCancel() {
+        isSwitcherActive = false
         overlayController.hide()
         Task { @MainActor in WindowEnumerator.refreshCache() }
+    }
+}
+
+extension AppDelegate: ClipboardHotkeyTapDelegate {
+    func clipboardPickerDidActivate() {
+        guard !isSwitcherActive, !clipboardHistoryStore.items.isEmpty else {
+            clipboardHotkeyTap.deactivate()
+            return
+        }
+        clipboardOverlayController.show(with: clipboardHistoryStore.items)
+    }
+
+    func clipboardPickerDidMove(down: Bool) {
+        clipboardPickerViewModel.move(down: down)
+    }
+
+    func clipboardPickerDidCommit() {
+        commitClipboardSelection(at: clipboardPickerViewModel.selectedIndex)
+    }
+
+    func clipboardPickerDidCancel() {
+        cancelClipboardPicker()
     }
 }

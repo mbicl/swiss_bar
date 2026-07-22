@@ -62,7 +62,13 @@ private struct ClipboardHistorySettingsTab: View {
     var body: some View {
         Form {
             Toggle("Enable clipboard history", isOn: $settings.clipboardHistoryEnabled)
-            ComingSoonNote()
+            Stepper("History size: \(settings.clipboardHistoryCapacity)", value: $settings.clipboardHistoryCapacity, in: 1...500)
+                .disabled(!settings.clipboardHistoryEnabled)
+            Toggle("Move pasted item to top of history", isOn: $settings.clipboardHistoryReorderOnPaste)
+                .disabled(!settings.clipboardHistoryEnabled)
+            Text("Records copied text and images. Paste from history with ⌘⇧V. Oldest items are removed once this many are stored.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .formStyle(.grouped)
     }
