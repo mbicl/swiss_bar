@@ -152,7 +152,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in WindowEnumerator.refreshCache() }
         }
         center.addObserver(forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main) { _ in
-            Task { @MainActor in WindowEnumerator.refreshCache() }
+            Task { @MainActor in
+                WindowEnumerator.refreshCache()
+                // The quit app's windows are gone now - this is the natural point to drop their
+                // cached AX elements/MRU entries too, rather than only pruning on Space changes
+                // (a user who never switches Spaces would otherwise accumulate them forever).
+                WindowTracker.shared.prune()
+            }
         }
     }
 

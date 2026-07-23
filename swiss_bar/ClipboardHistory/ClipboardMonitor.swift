@@ -34,11 +34,15 @@ final class ClipboardMonitor {
 
     func start() {
         guard timer == nil else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: Self.pollInterval, repeats: true) { [weak self] _ in
+        let newTimer = Timer.scheduledTimer(withTimeInterval: Self.pollInterval, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.poll()
             }
         }
+        // Lets the OS coalesce this wakeup with others instead of forcing a precise one every
+        // 0.3s - measurable battery cost for an always-running background app otherwise.
+        newTimer.tolerance = Self.pollInterval * 0.2
+        timer = newTimer
     }
 
     func stop() {

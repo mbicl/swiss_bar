@@ -25,11 +25,15 @@ final class ClaudeUsageMonitor: ObservableObject {
 
     func start() {
         guard timer == nil else { return }
-        timer = Timer.scheduledTimer(withTimeInterval: Self.pollInterval, repeats: true) { [weak self] _ in
+        let newTimer = Timer.scheduledTimer(withTimeInterval: Self.pollInterval, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 await self?.poll()
             }
         }
+        // Lets the OS coalesce this wakeup with others instead of forcing a precise one every
+        // 5 minutes - measurable battery cost for an always-running background app otherwise.
+        newTimer.tolerance = Self.pollInterval * 0.2
+        timer = newTimer
         refreshNow()
 
         // Re-poll immediately when the CLI command changes, rather than waiting up to 5 minutes -
