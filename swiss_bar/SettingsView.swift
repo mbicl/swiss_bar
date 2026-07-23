@@ -3,6 +3,7 @@
 //  swiss_bar
 //
 
+import AppKit
 import SwiftUI
 
 struct SettingsView: View {
@@ -80,6 +81,11 @@ private struct ClipboardHistorySettingsTab: View {
             Text("Records copied text and images. Paste from history with ⌘⇧V. Oldest items are removed once this many are stored.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            if NSPasteboard.general.accessBehavior != .alwaysAllow {
+                Text("macOS may ask to let swiss_bar \u{201C}access data from other apps\u{201D} — that prompt is this feature reading the clipboard. Choose \u{201C}Always Allow\u{201D} to stop it recurring.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
     }
