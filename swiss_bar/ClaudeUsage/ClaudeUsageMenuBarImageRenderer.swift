@@ -24,6 +24,10 @@ final class ClaudeUsageMenuBarImageRenderer: ObservableObject {
     @Published private(set) var accessibilityDescription: String = ""
 
     private var cancellable: AnyCancellable?
+    /// Skips re-rendering (and re-rastering via `ImageRenderer`) when nothing actually changed -
+    /// see `NetworkSpeedMenuBarImageRenderer.lastRenderKey` for why this matters even at a slow
+    /// (5-minute) poll cadence: every settings change re-publishes the same snapshot too.
+    private var lastRenderKey: String?
 
     init(monitor: ClaudeUsageMonitor, settings: AppSettings) {
         cancellable = Publishers.CombineLatest3(
@@ -40,12 +44,16 @@ final class ClaudeUsageMenuBarImageRenderer: ObservableObject {
         guard let snapshot else {
             image = nil
             accessibilityDescription = "Claude usage unavailable"
+            lastRenderKey = nil
             return
         }
 
         let weeklyPercent = snapshot.weeklyLines.first(where: { $0.label.lowercased() == "all models" })?.percent
             ?? snapshot.weeklyLines.first?.percent
         let displayedWeeklyPercent = showWeekly ? weeklyPercent : nil
+
+        let key = "\(snapshot.sessionPercent)|\(String(describing: displayedWeeklyPercent))|\(style.rawValue)"
+        guard key != lastRenderKey else { return }
 
         let content: AnyView
         switch style {
@@ -56,7 +64,11 @@ final class ClaudeUsageMenuBarImageRenderer: ObservableObject {
         }
 
         let renderer = ImageRenderer(content: content)
-        renderer.scale = NSScreen.main?.backingScaleFactor ?? 2
+        // NSScreen.main follows the key window, which this LSUIElement app rarely has - it can
+        // silently fall back to the primary display, rendering blurry/oversized on a secondary
+        // display with a different scale factor. Render at the sharpest display's scale; AppKit
+        // downsamples cleanly for lower-DPI displays.
+        renderer.scale = NSScreen.screens.map(\.backingScaleFactor).max() ?? 2
         guard let nsImage = renderer.nsImage else { return }
         // The actual flag AppKit's status bar button consults - belt-and-suspenders alongside
         // `.renderingMode(.original)` on the `Image` that displays it.
@@ -68,6 +80,7 @@ final class ClaudeUsageMenuBarImageRenderer: ObservableObject {
             description += ", weekly usage \(displayedWeeklyPercent) percent"
         }
         accessibilityDescription = description
+        lastRenderKey = key
     }
 }
 

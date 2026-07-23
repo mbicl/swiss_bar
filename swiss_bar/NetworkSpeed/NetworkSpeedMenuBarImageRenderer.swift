@@ -24,6 +24,10 @@ final class NetworkSpeedMenuBarImageRenderer: ObservableObject {
     @Published private(set) var accessibilityDescription: String = ""
 
     private var cancellable: AnyCancellable?
+    /// Skips re-rendering (and re-rastering via `ImageRenderer`) when nothing actually changed -
+    /// an idle connection otherwise re-renders an identical "0 B/s"/"0 B/s" bitmap every second,
+    /// forever, on the main thread of a background app.
+    private var lastRenderKey: String?
 
     init(monitor: NetworkSpeedMonitor, settings: AppSettings) {
         cancellable = Publishers.CombineLatest4(
@@ -41,12 +45,19 @@ final class NetworkSpeedMenuBarImageRenderer: ObservableObject {
         let uploadText = "↑ " + NetworkRateFormatter.string(forBytesPerSecond: upload)
         let downloadText = "↓ " + NetworkRateFormatter.string(forBytesPerSecond: download)
 
+        let key = "\(uploadText)|\(downloadText)|\(uploadColor)|\(downloadColor)"
+        guard key != lastRenderKey else { return }
+
         let content = NetworkSpeedMenuBarLabelContent(
             uploadText: uploadText, downloadText: downloadText,
             uploadColor: uploadColor, downloadColor: downloadColor
         )
         let renderer = ImageRenderer(content: content)
-        renderer.scale = NSScreen.main?.backingScaleFactor ?? 2
+        // NSScreen.main follows the key window, which this LSUIElement app rarely has - it can
+        // silently fall back to the primary display, rendering blurry/oversized on a secondary
+        // display with a different scale factor. Render at the sharpest display's scale; AppKit
+        // downsamples cleanly for lower-DPI displays.
+        renderer.scale = NSScreen.screens.map(\.backingScaleFactor).max() ?? 2
         guard let nsImage = renderer.nsImage else { return }
         // The actual flag AppKit's status bar button consults - belt-and-suspenders alongside
         // `.renderingMode(.original)` on the `Image` that displays it.
@@ -54,6 +65,7 @@ final class NetworkSpeedMenuBarImageRenderer: ObservableObject {
 
         image = nsImage
         accessibilityDescription = "Upload \(uploadText.dropFirst(2)), download \(downloadText.dropFirst(2))"
+        lastRenderKey = key
     }
 }
 
