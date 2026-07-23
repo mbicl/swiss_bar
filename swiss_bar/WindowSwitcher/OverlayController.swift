@@ -29,6 +29,10 @@ final class OverlayController {
             // Keep previews from the previous activation while fresh ones stream in - a slightly
             // stale thumbnail beats flashing back to the app icon on every ⌘Tab.
             let windowIDs = candidates.compactMap(\.windowID)
+            // ...but only for windows still in this list - otherwise closed windows' thumbnails
+            // (each a full NSImage bitmap) accumulate in the dictionary for the app's lifetime.
+            let currentIDs = Set(windowIDs)
+            viewModel.previews = viewModel.previews.filter { currentIDs.contains($0.key) }
             previewTask = Task { [viewModel] in
                 await WindowPreviewCapturer.capturePreviews(for: windowIDs) { windowID, image in
                     viewModel.previews[windowID] = image
