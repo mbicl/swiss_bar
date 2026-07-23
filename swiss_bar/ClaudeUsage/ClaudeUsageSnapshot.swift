@@ -10,7 +10,9 @@ import Foundation
 /// string has no year and nothing here needs countdown math, just display.
 struct ClaudeUsageSnapshot {
     let sessionPercent: Int
-    let sessionResetDescription: String
+    /// `nil` when no session is currently active (e.g. right after a reset, before the next
+    /// message) - `/usage` then omits the "· resets ..." suffix entirely.
+    let sessionResetDescription: String?
     /// "all models" plus any additional per-model line (e.g. a separate Fable 5 line), if present.
     let weeklyLines: [ClaudeUsageWeeklyLine]
     /// `nil` when the "contributing to usage" section fails to parse - kept independent of the

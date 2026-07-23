@@ -83,6 +83,19 @@ struct ClaudeUsageParserTests {
         #expect(ClaudeUsageParser.parse("Current session: 20% used · resets Jul 22 at 8:20pm (Asia/Samarkand)") == nil)
     }
 
+    @Test func sessionWithoutAResetSuffixStillParses() {
+        // Real capture right after a session reset, before the next message is sent - `/usage`
+        // omits "· resets ..." entirely in this case instead of e.g. reporting 0% with a reset time.
+        let noActiveSession = """
+        Current session: 0% used
+        Current week (all models): 21% used · resets Jul 30 at 12pm (Asia/Samarkand)
+        """
+        let snapshot = ClaudeUsageParser.parse(noActiveSession)
+        #expect(snapshot?.sessionPercent == 0)
+        #expect(snapshot?.sessionResetDescription == nil)
+        #expect(snapshot?.weeklyLines.first?.percent == 21)
+    }
+
     @Test func missingContributingSectionLeavesHeadlinePercentagesIntact() {
         let noBreakdown = """
         Current session: 20% used · resets Jul 22 at 8:20pm (Asia/Samarkand)

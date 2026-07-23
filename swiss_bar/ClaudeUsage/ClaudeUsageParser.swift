@@ -13,8 +13,11 @@ import Foundation
 /// optional, so a reworded "contributing to usage" section degrades to a missing breakdown rather
 /// than losing the headline numbers or crashing.
 enum ClaudeUsageParser {
+    // The "· resets ..." suffix is absent when no session is active yet (e.g. right after a
+    // reset, before the next message) - `claude -p "/usage"` then prints just "Current session:
+    // 0% used" with nothing after it, so that group is optional here.
     nonisolated private static let sessionRegex = try! NSRegularExpression(
-        pattern: #"^Current session:\s*(\d+)%\s*used\s*·\s*resets\s*(.+)$"#
+        pattern: #"^Current session:\s*(\d+)%\s*used(?:\s*·\s*resets\s*(.+))?$"#
     )
     nonisolated private static let weeklyRegex = try! NSRegularExpression(
         pattern: #"^Current week \(([^)]+)\):\s*(\d+)%\s*used\s*·\s*resets\s*(.+)$"#
@@ -47,7 +50,7 @@ enum ClaudeUsageParser {
         for line in lines {
             if let match = firstMatch(sessionRegex, in: line) {
                 sessionPercent = Int(match.group(1, in: line))
-                sessionReset = match.group(2, in: line)
+                sessionReset = match.optionalGroup(2, in: line)
                 continue
             }
             if let match = firstMatch(weeklyRegex, in: line) {
@@ -78,7 +81,7 @@ enum ClaudeUsageParser {
             }
         }
 
-        guard let sessionPercent, let sessionReset, !weeklyLines.isEmpty else { return nil }
+        guard let sessionPercent, !weeklyLines.isEmpty else { return nil }
 
         var contributing: ClaudeUsageContributing?
         if let last24h = periods["24h"]?.build(), let last7d = periods["7d"]?.build() {
@@ -133,6 +136,13 @@ enum ClaudeUsageParser {
 private extension NSTextCheckingResult {
     nonisolated func group(_ index: Int, in string: String) -> String {
         guard let range = Range(self.range(at: index), in: string) else { return "" }
+        return String(string[range])
+    }
+
+    /// Like `group(_:in:)`, but distinguishes a non-participating optional capture group (`nil`)
+    /// from one that matched - `group(_:in:)` can't tell those apart since both read back as "".
+    nonisolated func optionalGroup(_ index: Int, in string: String) -> String? {
+        guard let range = Range(self.range(at: index), in: string) else { return nil }
         return String(string[range])
     }
 }

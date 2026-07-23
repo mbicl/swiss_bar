@@ -66,7 +66,7 @@ struct ClaudeUsageDropdownView: View {
         }
     }
 
-    private func row(label: String, percent: Int, resetDescription: String) -> some View {
+    private func row(label: String, percent: Int, resetDescription: String?) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             HStack {
                 Text(label).font(.headline)
@@ -75,7 +75,7 @@ struct ClaudeUsageDropdownView: View {
                     .font(.headline).bold()
                     .foregroundStyle(ClaudeUsageThreshold.severity(forPercent: percent).color)
             }
-            Text("Resets \(resetDescription)")
+            Text(resetDescription.map { "Resets \($0)" } ?? "No active session yet")
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
