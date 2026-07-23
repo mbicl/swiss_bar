@@ -17,6 +17,12 @@ struct ClaudeUsageMenuBarLabel: View {
             Image(nsImage: image)
                 .renderingMode(.original)
                 .accessibilityLabel(imageRenderer.accessibilityDescription)
+        } else {
+            // Never collapse to EmptyView: a zero-width status item breaks menu bar hit-testing
+            // (observed as a phantom hover highlight) - true from launch until the first
+            // successful CLI poll, and permanently whenever the CLI fails.
+            Image(systemName: "gauge.with.needle")
+                .accessibilityLabel("Claude usage unavailable")
         }
     }
 }
