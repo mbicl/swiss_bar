@@ -61,6 +61,10 @@ final class ClaudeUsageMonitor: ObservableObject {
     }
 
     private func poll() async {
+        // The timer tick, the settings-change debounce, and "Update Now" can all reach here -
+        // await suspends, so isRefreshing being read by the button's .disabled alone doesn't
+        // prevent a second entry from the other two paths racing a subprocess against this one.
+        guard !isRefreshing else { return }
         isRefreshing = true
         defer { isRefreshing = false }
 
