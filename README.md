@@ -7,15 +7,16 @@ cleaning mode, and live network/Claude usage indicators, all in one lightweight 
 
 - [x] **Window switcher** — replaces Cmd+Tab with a switcher that cycles through individual
   windows instead of apps, with MRU-based ordering and arrow-key navigation.
-- [ ] **Clipboard history** — records copied text/images (FlyCut-style); paste from history via
+- [x] **Clipboard history** — records copied text/images (FlyCut-style); paste from history via
   Cmd+Shift+V.
 - [x] **Keyboard cleaning mode** — temporarily disables all keyboard input so the keyboard can be
   physically cleaned, via a live switch in the menu-bar dropdown.
-- [ ] **Network speed indicator** — shows live download/upload speed in the menubar.
-- [ ] **Claude usage indicator** — shows Claude usage (session, weekly, Fable 5 if present),
-  similar to the Claude web app.
+- [x] **Network speed indicator** — shows live download/upload speed in the menubar, with a
+  dropdown graph of recent history.
+- [x] **Claude usage indicator** — shows Claude Code session/weekly usage in the menubar, colored
+  by how close you are to the limit, similar to the Claude web app.
 
-See [ROADMAP.md](ROADMAP.md) for build status and implementation notes as each feature lands.
+All five are implemented and shipping in [Releases](https://github.com/mbicl/swiss_bar/releases).
 
 ## Install
 
@@ -48,4 +49,4 @@ under App Sandbox.
 ## Contributing
 
 This is a personal project built one feature at a time; see [CLAUDE.md](CLAUDE.md) for
-architecture notes and [ROADMAP.md](ROADMAP.md) for what's next.
+architecture notes.
