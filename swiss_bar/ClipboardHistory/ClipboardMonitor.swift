@@ -62,12 +62,73 @@ final class ClipboardMonitor {
         let types = pasteboard.types ?? []
         guard !Self.containsConcealedType(types) else { return }
 
-        guard let item = Self.buildItem(
-            from: pasteboard, types: types, persistence: persistence,
-            captureFileURLs: settings.clipboardHistoryCaptureFinderImageFiles
-        ) else { return }
+        // Text stays fully synchronous (cheap - just a string read + hash). Images hand off the
+        // PNG encode + disk write to captureImage(_:), off this main-actor poll tick - see its
+        // doc comment.
+        for category in Self.captureCategories(in: types) {
+            switch category {
+            case .text:
+                if let item = Self.buildTextItem(from: pasteboard) {
+                    commitIfNotDuplicate(item)
+                    return
+                }
+            case .image:
+                if let image = NSImage(pasteboard: pasteboard) {
+                    captureImage(image)
+                    return
+                }
+            case .fileURL:
+                // Reads the file from wherever it lives on disk - opt-in only, since the first
+                // read from a TCC-protected folder (Desktop/Documents/Downloads/…) triggers an
+                // unexplained folder-access prompt attributed to this app. See
+                // AppSettings.clipboardHistoryCaptureFinderImageFiles.
+                guard settings.clipboardHistoryCaptureFinderImageFiles else { continue }
+                guard let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
+                      urls.count == 1, Self.isImageFile(urls[0]) else { continue }
+                guard let image = NSImage(contentsOf: urls[0]) else {
+                    if !Self.didLogBlockedFileRead {
+                        Self.didLogBlockedFileRead = true
+                        Self.logger.notice("image file copy could not be read (likely a denied folder permission): \(urls[0].path, privacy: .public)")
+                    }
+                    continue
+                }
+                captureImage(image)
+                return
+            }
+        }
+    }
+
+    private static func buildTextItem(from pasteboard: NSPasteboard) -> ClipboardItem? {
+        guard let text = pasteboard.string(forType: .string), !text.isEmpty else { return nil }
+        return ClipboardItem(id: UUID(), date: Date(), contentHash: ClipboardContentHasher.hash(text), kind: .text(text))
+    }
+
+    private func commitIfNotDuplicate(_ item: ClipboardItem) {
         guard !Self.isDuplicateOfTop(hash: item.contentHash, topHash: store.topContentHash) else { return }
         store.add(item)
+    }
+
+    /// Encodes and writes the image off the main actor: TIFF -> PNG encode + disk write can be
+    /// hundreds of ms for a large screenshot, and doing that synchronously on this 0.3s poll tick
+    /// would visibly hitch the UI (and delay the event taps, which also run on the main run
+    /// loop). The dedup hash needs the encoded PNG bytes, so "is this already at the top of
+    /// history" is checked only after the encode - a duplicate's just-written file is deleted.
+    private func captureImage(_ image: NSImage) {
+        Task { [store, persistence] in
+            let result = await Task.detached(priority: .utility) {
+                persistence.writeImageFile(image)
+            }.value
+            guard let (fileName, pixelSize, pngData) = result else { return }
+            let item = ClipboardItem(
+                id: UUID(), date: Date(), contentHash: ClipboardContentHasher.hash(pngData),
+                kind: .image(fileName: fileName, pixelSize: pixelSize)
+            )
+            guard !Self.isDuplicateOfTop(hash: item.contentHash, topHash: store.topContentHash) else {
+                persistence.deleteImageFiles(for: [item])
+                return
+            }
+            store.add(item)
+        }
     }
 
     nonisolated static func containsConcealedType(_ types: [NSPasteboard.PasteboardType]) -> Bool {
@@ -110,51 +171,5 @@ final class ClipboardMonitor {
 
     nonisolated static func isImageFile(_ url: URL) -> Bool {
         UTType(filenameExtension: url.pathExtension)?.conforms(to: .image) ?? false
-    }
-
-    /// Tries each declared category in order, falling through to the next when one can't actually
-    /// produce an item (e.g. a file-url category whose file turns out not to be an image).
-    private static func buildItem(
-        from pasteboard: NSPasteboard, types: [NSPasteboard.PasteboardType], persistence: ClipboardHistoryPersistence,
-        captureFileURLs: Bool
-    ) -> ClipboardItem? {
-        for category in captureCategories(in: types) {
-            switch category {
-            case .text:
-                if let text = pasteboard.string(forType: .string), !text.isEmpty {
-                    return ClipboardItem(id: UUID(), date: Date(), contentHash: ClipboardContentHasher.hash(text), kind: .text(text))
-                }
-            case .image:
-                if let image = NSImage(pasteboard: pasteboard),
-                   let (fileName, pixelSize, pngData) = persistence.writeImageFile(image) {
-                    return ClipboardItem(
-                        id: UUID(), date: Date(), contentHash: ClipboardContentHasher.hash(pngData),
-                        kind: .image(fileName: fileName, pixelSize: pixelSize)
-                    )
-                }
-            case .fileURL:
-                // Reads the file from wherever it lives on disk - opt-in only, since the first
-                // read from a TCC-protected folder (Desktop/Documents/Downloads/…) triggers an
-                // unexplained folder-access prompt attributed to this app. See
-                // AppSettings.clipboardHistoryCaptureFinderImageFiles.
-                guard captureFileURLs else { continue }
-                guard let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
-                      urls.count == 1, isImageFile(urls[0]) else { continue }
-                guard let image = NSImage(contentsOf: urls[0]) else {
-                    if !didLogBlockedFileRead {
-                        didLogBlockedFileRead = true
-                        logger.notice("image file copy could not be read (likely a denied folder permission): \(urls[0].path, privacy: .public)")
-                    }
-                    continue
-                }
-                if let (fileName, pixelSize, pngData) = persistence.writeImageFile(image) {
-                    return ClipboardItem(
-                        id: UUID(), date: Date(), contentHash: ClipboardContentHasher.hash(pngData),
-                        kind: .image(fileName: fileName, pixelSize: pixelSize)
-                    )
-                }
-            }
-        }
-        return nil
     }
 }
