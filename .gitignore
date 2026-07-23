@@ -9,3 +9,10 @@ certs/
 
 # Local release build output
 build/
+
+# Session-scratch planning/analysis docs (code reviews, refactoring plans) and the roadmap/
+# mempalace config file - kept locally, deliberately not committed
+CODE_REVIEW*.md
+REFACTORING_PLAN*.md
+ROADMAP.md
+mempalace.yaml
