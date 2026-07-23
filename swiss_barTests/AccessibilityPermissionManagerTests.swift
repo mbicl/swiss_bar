@@ -72,4 +72,35 @@ struct AccessibilityPermissionManagerTests {
 
         #expect(manager.isScreenRecordingGranted == true)
     }
+
+    @Test func pollIntervalIsFastWhileAnyGrantIsMissing() {
+        let checker = FakeTrustChecker()
+        let manager = AccessibilityPermissionManager(trustChecker: checker)
+
+        #expect(manager.currentPollInterval == 2)
+    }
+
+    @Test func pollIntervalSlowsToSixtySecondsOnceEverythingIsGranted() {
+        let checker = FakeTrustChecker()
+        checker.isProcessTrustedValue = true
+        checker.isInputMonitoringGrantedValue = true
+        checker.isScreenRecordingGrantedValue = true
+        let manager = AccessibilityPermissionManager(trustChecker: checker)
+
+        #expect(manager.currentPollInterval == 60)
+    }
+
+    @Test func pollIntervalReturnsToFastWhenAGrantIsLost() {
+        let checker = FakeTrustChecker()
+        checker.isProcessTrustedValue = true
+        checker.isInputMonitoringGrantedValue = true
+        checker.isScreenRecordingGrantedValue = true
+        let manager = AccessibilityPermissionManager(trustChecker: checker)
+        #expect(manager.currentPollInterval == 60)
+
+        checker.isScreenRecordingGrantedValue = false
+        manager.refresh()
+
+        #expect(manager.currentPollInterval == 2)
+    }
 }

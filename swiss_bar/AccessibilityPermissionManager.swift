@@ -50,16 +50,41 @@ final class AccessibilityPermissionManager: ObservableObject {
     private let trustChecker: TrustChecking
     private var pollTimer: Timer?
 
+    /// While any grant is missing, the UI needs to react quickly as the user works through
+    /// System Settings. Exposed for testing.
+    private static let fastPollInterval: TimeInterval = 2
+    /// Once everything is granted, each poll is 3 synchronous TCC IPC round-trips on the main
+    /// thread for pure waste - confirmed live: 2 `TCCAccessRequest` IPCs logged every 2s for the
+    /// app's entire lifetime, even in the (common) steady state where nothing has changed since
+    /// launch. Slow to an occasional revocation check instead.
+    private static let slowPollInterval: TimeInterval = 60
+
+    private var allGranted: Bool {
+        isAccessibilityTrusted && isInputMonitoringGranted && isScreenRecordingGranted
+    }
+
+    /// The poll timer's current interval - exposed for testing the fast/slow cadence switch.
+    var currentPollInterval: TimeInterval? { pollTimer?.timeInterval }
+
     init(trustChecker: TrustChecking = RealTrustChecker()) {
         self.trustChecker = trustChecker
         refresh()
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
-            self?.refresh()
-        }
     }
 
     deinit {
         pollTimer?.invalidate()
+    }
+
+    /// (Re)creates the poll timer at the cadence the current grant state calls for.
+    private func reschedulePolling() {
+        let interval = allGranted ? Self.slowPollInterval : Self.fastPollInterval
+        if pollTimer?.timeInterval == interval { return }
+        pollTimer?.invalidate()
+        let timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
+            self?.refresh()
+        }
+        timer.tolerance = interval * 0.2
+        pollTimer = timer
     }
 
     func refresh() {
@@ -84,6 +109,8 @@ final class AccessibilityPermissionManager: ObservableObject {
         if isAccessibilityTrusted && !wasTrusted {
             onAccessibilityGranted?()
         }
+
+        reschedulePolling()
     }
 
     /// Triggers the system prompt (or registers the app so it appears in Settings if the prompt
