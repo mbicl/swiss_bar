@@ -24,7 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     lazy var clipboardHistoryStore = ClipboardHistoryStore(
         persistence: clipboardHistoryPersistence, capacity: settings.clipboardHistoryCapacity
     )
-    private lazy var clipboardMonitor = ClipboardMonitor(store: clipboardHistoryStore, persistence: clipboardHistoryPersistence)
+    private lazy var clipboardMonitor = ClipboardMonitor(store: clipboardHistoryStore, persistence: clipboardHistoryPersistence, settings: settings)
     private let clipboardPickerViewModel = ClipboardPickerViewModel()
     private lazy var clipboardOverlayController = ClipboardPickerOverlayController(
         viewModel: clipboardPickerViewModel, persistence: clipboardHistoryPersistence

@@ -68,6 +68,11 @@ private struct ClipboardHistorySettingsTab: View {
                 .disabled(!settings.clipboardHistoryEnabled)
             Toggle("Move pasted item to top of history", isOn: $settings.clipboardHistoryReorderOnPaste)
                 .disabled(!settings.clipboardHistoryEnabled)
+            Toggle("Capture image files copied in Finder", isOn: $settings.clipboardHistoryCaptureFinderImageFiles)
+                .disabled(!settings.clipboardHistoryEnabled)
+            Text("Reads the copied file to store a preview, so macOS will ask for access to the folders those files are in (Desktop, Documents, Downloads, …). Images copied from apps (browsers, screenshots) are always captured and never need folder access.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             Button("Clear History", role: .destructive) {
                 clipboardHistoryStore.clear()
             }

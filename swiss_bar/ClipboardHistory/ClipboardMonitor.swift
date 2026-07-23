@@ -18,12 +18,17 @@ final class ClipboardMonitor {
 
     private let store: ClipboardHistoryStore
     private let persistence: ClipboardHistoryPersistence
+    private let settings: AppSettings
     private var timer: Timer?
     private var lastChangeCount: Int
+    /// Logged once per app run, the first time a Finder file-copy image read is blocked (denied
+    /// folder permission) - so a silently-vanishing capture is diagnosable instead of invisible.
+    private static var didLogBlockedFileRead = false
 
-    init(store: ClipboardHistoryStore, persistence: ClipboardHistoryPersistence = ClipboardHistoryPersistence()) {
+    init(store: ClipboardHistoryStore, persistence: ClipboardHistoryPersistence = ClipboardHistoryPersistence(), settings: AppSettings) {
         self.store = store
         self.persistence = persistence
+        self.settings = settings
         lastChangeCount = NSPasteboard.general.changeCount
     }
 
@@ -57,7 +62,10 @@ final class ClipboardMonitor {
         let types = pasteboard.types ?? []
         guard !Self.containsConcealedType(types) else { return }
 
-        guard let item = Self.buildItem(from: pasteboard, types: types, persistence: persistence) else { return }
+        guard let item = Self.buildItem(
+            from: pasteboard, types: types, persistence: persistence,
+            captureFileURLs: settings.clipboardHistoryCaptureFinderImageFiles
+        ) else { return }
         guard !Self.isDuplicateOfTop(hash: item.contentHash, topHash: store.topContentHash) else { return }
         store.add(item)
     }
@@ -107,7 +115,8 @@ final class ClipboardMonitor {
     /// Tries each declared category in order, falling through to the next when one can't actually
     /// produce an item (e.g. a file-url category whose file turns out not to be an image).
     private static func buildItem(
-        from pasteboard: NSPasteboard, types: [NSPasteboard.PasteboardType], persistence: ClipboardHistoryPersistence
+        from pasteboard: NSPasteboard, types: [NSPasteboard.PasteboardType], persistence: ClipboardHistoryPersistence,
+        captureFileURLs: Bool
     ) -> ClipboardItem? {
         for category in captureCategories(in: types) {
             switch category {
@@ -124,10 +133,21 @@ final class ClipboardMonitor {
                     )
                 }
             case .fileURL:
-                if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
-                   urls.count == 1, isImageFile(urls[0]),
-                   let image = NSImage(contentsOf: urls[0]),
-                   let (fileName, pixelSize, pngData) = persistence.writeImageFile(image) {
+                // Reads the file from wherever it lives on disk - opt-in only, since the first
+                // read from a TCC-protected folder (Desktop/Documents/Downloads/…) triggers an
+                // unexplained folder-access prompt attributed to this app. See
+                // AppSettings.clipboardHistoryCaptureFinderImageFiles.
+                guard captureFileURLs else { continue }
+                guard let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
+                      urls.count == 1, isImageFile(urls[0]) else { continue }
+                guard let image = NSImage(contentsOf: urls[0]) else {
+                    if !didLogBlockedFileRead {
+                        didLogBlockedFileRead = true
+                        logger.notice("image file copy could not be read (likely a denied folder permission): \(urls[0].path, privacy: .public)")
+                    }
+                    continue
+                }
+                if let (fileName, pixelSize, pngData) = persistence.writeImageFile(image) {
                     return ClipboardItem(
                         id: UUID(), date: Date(), contentHash: ClipboardContentHasher.hash(pngData),
                         kind: .image(fileName: fileName, pixelSize: pixelSize)

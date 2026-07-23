@@ -18,6 +18,7 @@ final class AppSettings: ObservableObject {
         static let clipboardHistoryEnabled = "feature.clipboardHistory.enabled"
         static let clipboardHistoryCapacity = "feature.clipboardHistory.capacity"
         static let clipboardHistoryReorderOnPaste = "feature.clipboardHistory.reorderOnPaste"
+        static let clipboardHistoryCaptureFinderImageFiles = "feature.clipboardHistory.captureFinderImageFiles"
         static let networkSpeedEnabled = "feature.networkSpeed.enabled"
         static let networkSpeedUploadColorHex = "feature.networkSpeed.uploadColorHex"
         static let networkSpeedDownloadColorHex = "feature.networkSpeed.downloadColorHex"
@@ -37,6 +38,14 @@ final class AppSettings: ObservableObject {
     }
     @Published var clipboardHistoryReorderOnPaste: Bool {
         didSet { defaults.set(clipboardHistoryReorderOnPaste, forKey: Keys.clipboardHistoryReorderOnPaste) }
+    }
+    /// Off by default: capturing a Finder-copied image file reads it from wherever it lives on
+    /// disk, which makes macOS prompt for access to that folder (Desktop/Documents/Downloads/…)
+    /// the first time - a surprising, unexplained prompt for a menu bar utility. Images copied
+    /// from apps (browsers, screenshots) carry image *data* on the pasteboard directly and are
+    /// unaffected by this setting.
+    @Published var clipboardHistoryCaptureFinderImageFiles: Bool {
+        didSet { defaults.set(clipboardHistoryCaptureFinderImageFiles, forKey: Keys.clipboardHistoryCaptureFinderImageFiles) }
     }
     @Published var networkSpeedEnabled: Bool {
         didSet { defaults.set(networkSpeedEnabled, forKey: Keys.networkSpeedEnabled) }
@@ -84,6 +93,7 @@ final class AppSettings: ObservableObject {
         clipboardHistoryEnabled = defaults.object(forKey: Keys.clipboardHistoryEnabled) as? Bool ?? true
         clipboardHistoryCapacity = defaults.object(forKey: Keys.clipboardHistoryCapacity) as? Int ?? 20
         clipboardHistoryReorderOnPaste = defaults.object(forKey: Keys.clipboardHistoryReorderOnPaste) as? Bool ?? true
+        clipboardHistoryCaptureFinderImageFiles = defaults.object(forKey: Keys.clipboardHistoryCaptureFinderImageFiles) as? Bool ?? false
         networkSpeedEnabled = defaults.object(forKey: Keys.networkSpeedEnabled) as? Bool ?? true
         networkSpeedUploadColor = defaults.string(forKey: Keys.networkSpeedUploadColorHex).flatMap(ColorHex.color(fromHex:))
             ?? ColorHex.color(fromHex: Self.defaultUploadColorHex) ?? .yellow

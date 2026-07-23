@@ -110,6 +110,20 @@ struct AppSettingsTests {
         #expect(reloaded.clipboardHistoryReorderOnPaste == false)
     }
 
+    @Test func clipboardHistoryCaptureFinderImageFilesDefaultsToFalse() {
+        let settings = AppSettings(defaults: makeDefaults())
+        #expect(settings.clipboardHistoryCaptureFinderImageFiles == false)
+    }
+
+    @Test func clipboardHistoryCaptureFinderImageFilesPersists() {
+        let defaults = makeDefaults()
+
+        AppSettings(defaults: defaults).clipboardHistoryCaptureFinderImageFiles = true
+
+        let reloaded = AppSettings(defaults: defaults)
+        #expect(reloaded.clipboardHistoryCaptureFinderImageFiles == true)
+    }
+
     @Test func networkSpeedColorsDefaultToConfiguredHexValues() {
         let settings = AppSettings(defaults: makeDefaults())
         #expect(ColorHex.hexString(from: settings.networkSpeedUploadColor) == "#FDD464FF")
