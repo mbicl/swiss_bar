@@ -43,6 +43,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// after it settles.
     private var spaceChangeRefresh: Task<Void, Never>?
 
+    /// Tokens for the three block-based `NSWorkspace` observers registered below - discarding
+    /// them (as this used to) means they can never be individually removed. Harmless in practice
+    /// today (this delegate is immortal for the app's lifetime), but the pattern latently leaks
+    /// if that ever changes; removed alongside everything else in `applicationWillTerminate`.
+    private var workspaceObservers: [NSObjectProtocol] = []
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         eventTapManager.delegate = self
         clipboardHotkeyTap.delegate = self
@@ -143,23 +149,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         let center = NSWorkspace.shared.notificationCenter
-        center.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
-            self?.scheduleSpaceChangeRefresh()
-        }
+        workspaceObservers.append(
+            center.addObserver(forName: NSWorkspace.activeSpaceDidChangeNotification, object: nil, queue: .main) { [weak self] _ in
+                self?.scheduleSpaceChangeRefresh()
+            }
+        )
         // Keeps the candidate cache from going stale between ⌘Tab presses, so `switcherDidActivate`
         // never has to run a live (AX-heavy) enumeration on the event-tap callback itself.
-        center.addObserver(forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main) { _ in
-            Task { @MainActor in WindowEnumerator.refreshCache() }
-        }
-        center.addObserver(forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main) { _ in
-            Task { @MainActor in
-                WindowEnumerator.refreshCache()
-                // The quit app's windows are gone now - this is the natural point to drop their
-                // cached AX elements/MRU entries too, rather than only pruning on Space changes
-                // (a user who never switches Spaces would otherwise accumulate them forever).
-                WindowTracker.shared.prune()
+        workspaceObservers.append(
+            center.addObserver(forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main) { _ in
+                Task { @MainActor in WindowEnumerator.refreshCache() }
             }
-        }
+        )
+        workspaceObservers.append(
+            center.addObserver(forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main) { _ in
+                Task { @MainActor in
+                    WindowEnumerator.refreshCache()
+                    // The quit app's windows are gone now - this is the natural point to drop their
+                    // cached AX elements/MRU entries too, rather than only pruning on Space changes
+                    // (a user who never switches Spaces would otherwise accumulate them forever).
+                    WindowTracker.shared.prune()
+                }
+            }
+        )
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -170,6 +182,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         networkSpeedMonitor.stop()
         claudeUsageMonitor.stop()
         spaceChangeRefresh?.cancel()
+        let center = NSWorkspace.shared.notificationCenter
+        workspaceObservers.forEach { center.removeObserver($0) }
+        workspaceObservers.removeAll()
     }
 
     private func commitClipboardSelection(at index: Int) {

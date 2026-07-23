@@ -128,11 +128,3 @@ private struct ClaudeUsageSettingsTab: View {
         .formStyle(.grouped)
     }
 }
-
-private struct ComingSoonNote: View {
-    var body: some View {
-        Text("This feature isn't implemented yet — the toggle controls whether it activates once it ships.")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-    }
-}

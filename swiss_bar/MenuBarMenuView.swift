@@ -115,7 +115,10 @@ private struct MenuRow: View {
 
     var body: some View {
         let button = Button {
-            NSApp.keyWindow?.close()
+            // The panel isn't always key (nonactivating .window-style MenuBarExtra, click-through
+            // timing) - NSApp.keyWindow?.close() alone can silently no-op, leaving the panel open
+            // while action() still runs. Fall back to whichever MenuBarExtra panel is visible.
+            (NSApp.keyWindow ?? NSApp.windows.first { $0.isVisible && $0.className.contains("MenuBarExtraWindow") })?.close()
             action()
         } label: {
             Text(title)
