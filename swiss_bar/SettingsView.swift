@@ -9,9 +9,12 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var settings: AppSettings
     @ObservedObject var clipboardHistoryStore: ClipboardHistoryStore
+    @ObservedObject var launchAtLoginManager: LaunchAtLoginManager
 
     var body: some View {
         TabView {
+            GeneralSettingsTab(launchAtLoginManager: launchAtLoginManager)
+                .tabItem { Label("General", systemImage: "gearshape") }
             WindowSwitcherSettingsTab(settings: settings)
                 .tabItem { Label("Window Switcher", systemImage: "rectangle.stack") }
             ClipboardHistorySettingsTab(settings: settings, clipboardHistoryStore: clipboardHistoryStore)
@@ -22,6 +25,31 @@ struct SettingsView: View {
                 .tabItem { Label("Claude Usage", systemImage: "gauge.with.needle") }
         }
         .frame(width: 520, height: 300)
+    }
+}
+
+private struct GeneralSettingsTab: View {
+    @ObservedObject var launchAtLoginManager: LaunchAtLoginManager
+
+    var body: some View {
+        Form {
+            Toggle("Launch at login", isOn: Binding(
+                get: { launchAtLoginManager.isEnabled },
+                set: { launchAtLoginManager.setEnabled($0) }
+            ))
+            if launchAtLoginManager.requiresApproval {
+                Text("Approve swiss_bar in Login Items to finish enabling this.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Open Login Items Settings…") {
+                    launchAtLoginManager.openLoginItemsSettings()
+                }
+            }
+            Text("Starts swiss_bar automatically when you log in.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .formStyle(.grouped)
     }
 }
 

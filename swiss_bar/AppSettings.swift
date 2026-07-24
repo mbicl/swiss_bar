@@ -89,17 +89,17 @@ final class AppSettings: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        windowSwitcherEnabled = defaults.object(forKey: Keys.windowSwitcherEnabled) as? Bool ?? true
-        clipboardHistoryEnabled = defaults.object(forKey: Keys.clipboardHistoryEnabled) as? Bool ?? true
+        windowSwitcherEnabled = defaults.object(forKey: Keys.windowSwitcherEnabled) as? Bool ?? false
+        clipboardHistoryEnabled = defaults.object(forKey: Keys.clipboardHistoryEnabled) as? Bool ?? false
         clipboardHistoryCapacity = defaults.object(forKey: Keys.clipboardHistoryCapacity) as? Int ?? 20
         clipboardHistoryReorderOnPaste = defaults.object(forKey: Keys.clipboardHistoryReorderOnPaste) as? Bool ?? true
         clipboardHistoryCaptureFinderImageFiles = defaults.object(forKey: Keys.clipboardHistoryCaptureFinderImageFiles) as? Bool ?? false
-        networkSpeedEnabled = defaults.object(forKey: Keys.networkSpeedEnabled) as? Bool ?? true
+        networkSpeedEnabled = defaults.object(forKey: Keys.networkSpeedEnabled) as? Bool ?? false
         networkSpeedUploadColor = defaults.string(forKey: Keys.networkSpeedUploadColorHex).flatMap(ColorHex.color(fromHex:))
             ?? ColorHex.color(fromHex: Self.defaultUploadColorHex) ?? .yellow
         networkSpeedDownloadColor = defaults.string(forKey: Keys.networkSpeedDownloadColorHex).flatMap(ColorHex.color(fromHex:))
             ?? ColorHex.color(fromHex: Self.defaultDownloadColorHex) ?? .mint
-        claudeUsageEnabled = defaults.object(forKey: Keys.claudeUsageEnabled) as? Bool ?? true
+        claudeUsageEnabled = defaults.object(forKey: Keys.claudeUsageEnabled) as? Bool ?? false
         claudeUsageMenuBarStyle = defaults.string(forKey: ClaudeUsageMenuBarStyle.defaultsKey).flatMap(ClaudeUsageMenuBarStyle.init) ?? .numbers
         claudeUsageShowWeeklyInMenuBar = defaults.object(forKey: Keys.claudeUsageShowWeeklyInMenuBar) as? Bool ?? true
         claudeUsageCLICommand = defaults.string(forKey: Keys.claudeUsageCLICommand) ?? "claude"

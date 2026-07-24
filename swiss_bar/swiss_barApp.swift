@@ -48,7 +48,11 @@ struct swiss_barApp: App {
         .menuBarExtraStyle(.window)
 
         Settings {
-            SettingsView(settings: settings, clipboardHistoryStore: appDelegate.clipboardHistoryStore)
+            SettingsView(
+                settings: settings,
+                clipboardHistoryStore: appDelegate.clipboardHistoryStore,
+                launchAtLoginManager: appDelegate.launchAtLoginManager
+            )
         }
     }
 }

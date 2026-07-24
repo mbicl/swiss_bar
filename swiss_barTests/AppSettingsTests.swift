@@ -19,13 +19,13 @@ struct AppSettingsTests {
         return defaults
     }
 
-    @Test func allFeaturesDefaultToEnabled() {
+    @Test func allFeaturesDefaultToDisabled() {
         let settings = AppSettings(defaults: makeDefaults())
 
-        #expect(settings.windowSwitcherEnabled)
-        #expect(settings.clipboardHistoryEnabled)
-        #expect(settings.networkSpeedEnabled)
-        #expect(settings.claudeUsageEnabled)
+        #expect(settings.windowSwitcherEnabled == false)
+        #expect(settings.clipboardHistoryEnabled == false)
+        #expect(settings.networkSpeedEnabled == false)
+        #expect(settings.claudeUsageEnabled == false)
     }
 
     @Test func switcherStyleDefaultsToHorizontal() {
@@ -33,14 +33,14 @@ struct AppSettingsTests {
         #expect(settings.switcherStyle == .horizontal)
     }
 
-    @Test func disablingAFeaturePersists() {
+    @Test func enablingAFeaturePersistsWithoutAffectingOthers() {
         let defaults = makeDefaults()
 
-        AppSettings(defaults: defaults).windowSwitcherEnabled = false
+        AppSettings(defaults: defaults).windowSwitcherEnabled = true
 
         let reloaded = AppSettings(defaults: defaults)
-        #expect(reloaded.windowSwitcherEnabled == false)
-        #expect(reloaded.clipboardHistoryEnabled == true)
+        #expect(reloaded.windowSwitcherEnabled == true)
+        #expect(reloaded.clipboardHistoryEnabled == false)
     }
 
     @Test func switcherStylePersists() {

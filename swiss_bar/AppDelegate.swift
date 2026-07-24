@@ -8,6 +8,7 @@ import Combine
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let permissionManager = AccessibilityPermissionManager()
+    let launchAtLoginManager = LaunchAtLoginManager()
     let keyboardCleaningManager = KeyboardCleaningManager()
     let networkSpeedMonitor = NetworkSpeedMonitor()
     lazy var networkSpeedMenuBarImageRenderer = NetworkSpeedMenuBarImageRenderer(monitor: networkSpeedMonitor, settings: settings)
