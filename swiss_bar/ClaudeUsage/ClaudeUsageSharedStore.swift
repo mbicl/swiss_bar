@@ -29,7 +29,21 @@ struct ClaudeUsageWidgetAccountPayload: Codable, Identifiable, Equatable {
 /// inspectable from Terminal while debugging.
 struct ClaudeUsageSharedStore {
     private static let logger = Logger(subsystem: "com.MBI.swiss-bar", category: "ClaudeUsageSharedStore")
-    static let appGroupID = "group.com.MBI.swiss-bar"
+
+    /// Keyed by bundle identifier so a `-dev` (Debug) build and the Release build never share
+    /// (and one can never clobber the other's) widget data - mirrors
+    /// `ClipboardHistoryPersistence.defaultRootDirectory`'s existing "keyed by bundle ID so
+    /// swiss_bar_dev and release never share or clobber each other's" rationale, which this
+    /// should have followed from the start. Both group IDs are listed in both targets'
+    /// `.entitlements` files (harmless for a build to be entitled for a group it doesn't use).
+    /// `Bundle.main` inside the widget extension is the widget's *own* bundle
+    /// (`com.MBI.swiss-bar(-dev).Widgets`), not the host app's - but that's fine here, since both
+    /// the app's and the widget's Debug bundle IDs share the same "-dev" suffix convention, so a
+    /// plain substring check on whichever target's own `Bundle.main` gives the right answer in
+    /// both places.
+    static var appGroupID: String {
+        (Bundle.main.bundleIdentifier ?? "").contains("-dev") ? "group.com.MBI.swiss-bar-dev" : "group.com.MBI.swiss-bar"
+    }
 
     /// Single source of truth for the per-slot `kind:` both `ClaudeUsageMonitor`'s
     /// `WidgetCenter.reloadTimelines(ofKind:)` call and each slot's `Widget` declaration use -
