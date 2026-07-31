@@ -6,6 +6,11 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		B07CED43732D71BF98BA0B1B /* swiss_barWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA487C6B4CFC4352B4B68D6D /* swiss_barWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		B0BA9319675ECF4848C7E970 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2DE38EE1C13C67C83196F298 /* Cocoa.framework */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXContainerItemProxy section */
 		0C173A333008C98D000EDC2D /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -21,28 +26,64 @@
 			remoteGlobalIDString = 0C173A243008C98B000EDC2D;
 			remoteInfo = swiss_bar;
 		};
+		62FA0B0411502DB1E360857C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 0C173A1D3008C98B000EDC2D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2021601FB3DCD04C71E9BE80;
+			remoteInfo = swiss_barWidgets;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		DED85FDC3C6939F3EBF3B6A4 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				B07CED43732D71BF98BA0B1B /* swiss_barWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		0C173A253008C98B000EDC2D /* swiss_bar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = swiss_bar.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0C173A323008C98D000EDC2D /* swiss_barTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = swiss_barTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0C173A3C3008C98D000EDC2D /* swiss_barUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = swiss_barUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		2DE38EE1C13C67C83196F298 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
+		AA487C6B4CFC4352B4B68D6D /* swiss_barWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = swiss_barWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		0C173A273008C98B000EDC2D /* swiss_bar */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = swiss_bar;
 			sourceTree = "<group>";
 		};
 		0C173A353008C98D000EDC2D /* swiss_barTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = swiss_barTests;
 			sourceTree = "<group>";
 		};
 		0C173A3F3008C98D000EDC2D /* swiss_barUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
 			path = swiss_barUITests;
+			sourceTree = "<group>";
+		};
+		A184F5801E31DEA89AA30392 /* swiss_barWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+			);
+			path = swiss_barWidgets;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -69,6 +110,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		80605B5854B6CCB023102EC9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B0BA9319675ECF4848C7E970 /* Cocoa.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -79,6 +128,8 @@
 				0C173A353008C98D000EDC2D /* swiss_barTests */,
 				0C173A3F3008C98D000EDC2D /* swiss_barUITests */,
 				0C173A263008C98B000EDC2D /* Products */,
+				697381B5EF784DE0E5141A23 /* Frameworks */,
+				A184F5801E31DEA89AA30392 /* swiss_barWidgets */,
 			);
 			sourceTree = "<group>";
 		};
@@ -88,8 +139,25 @@
 				0C173A253008C98B000EDC2D /* swiss_bar.app */,
 				0C173A323008C98D000EDC2D /* swiss_barTests.xctest */,
 				0C173A3C3008C98D000EDC2D /* swiss_barUITests.xctest */,
+				AA487C6B4CFC4352B4B68D6D /* swiss_barWidgets.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		2245175396AF947AEA3A99A7 /* OS X */ = {
+			isa = PBXGroup;
+			children = (
+				2DE38EE1C13C67C83196F298 /* Cocoa.framework */,
+			);
+			name = "OS X";
+			sourceTree = "<group>";
+		};
+		697381B5EF784DE0E5141A23 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				2245175396AF947AEA3A99A7 /* OS X */,
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -102,17 +170,17 @@
 				0C173A213008C98B000EDC2D /* Sources */,
 				0C173A223008C98B000EDC2D /* Frameworks */,
 				0C173A233008C98B000EDC2D /* Resources */,
+				DED85FDC3C6939F3EBF3B6A4 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				70DF3772D5A6017F3146B5C0 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				0C173A273008C98B000EDC2D /* swiss_bar */,
 			);
 			name = swiss_bar;
-			packageProductDependencies = (
-			);
 			productName = swiss_bar;
 			productReference = 0C173A253008C98B000EDC2D /* swiss_bar.app */;
 			productType = "com.apple.product-type.application";
@@ -134,8 +202,6 @@
 				0C173A353008C98D000EDC2D /* swiss_barTests */,
 			);
 			name = swiss_barTests;
-			packageProductDependencies = (
-			);
 			productName = swiss_barTests;
 			productReference = 0C173A323008C98D000EDC2D /* swiss_barTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
@@ -157,11 +223,29 @@
 				0C173A3F3008C98D000EDC2D /* swiss_barUITests */,
 			);
 			name = swiss_barUITests;
-			packageProductDependencies = (
-			);
 			productName = swiss_barUITests;
 			productReference = 0C173A3C3008C98D000EDC2D /* swiss_barUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		2021601FB3DCD04C71E9BE80 /* swiss_barWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = EAC4BF2C2917560C20562F28 /* Build configuration list for PBXNativeTarget "swiss_barWidgets" */;
+			buildPhases = (
+				1BACC41CFD644EDDACD3B8B3 /* Sources */,
+				80605B5854B6CCB023102EC9 /* Frameworks */,
+				F8934D79871ED9E52A445293 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A184F5801E31DEA89AA30392 /* swiss_barWidgets */,
+			);
+			name = swiss_barWidgets;
+			productName = swiss_barWidgets;
+			productReference = AA487C6B4CFC4352B4B68D6D /* swiss_barWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -203,6 +287,7 @@
 				0C173A243008C98B000EDC2D /* swiss_bar */,
 				0C173A313008C98D000EDC2D /* swiss_barTests */,
 				0C173A3B3008C98D000EDC2D /* swiss_barUITests */,
+				2021601FB3DCD04C71E9BE80 /* swiss_barWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -223,6 +308,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		0C173A3A3008C98D000EDC2D /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F8934D79871ED9E52A445293 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -253,6 +345,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		1BACC41CFD644EDDACD3B8B3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -266,9 +365,43 @@
 			target = 0C173A243008C98B000EDC2D /* swiss_bar */;
 			targetProxy = 0C173A3D3008C98D000EDC2D /* PBXContainerItemProxy */;
 		};
+		70DF3772D5A6017F3146B5C0 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = swiss_barWidgets;
+			target = 2021601FB3DCD04C71E9BE80 /* swiss_barWidgets */;
+			targetProxy = 62FA0B0411502DB1E360857C /* PBXContainerItemProxy */;
+		};
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
+		00B7A285E7452CBE67D57F95 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = swiss_barWidgets/swiss_barWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7BLK6NGM28;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = swiss_barWidgets/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.MBI.swiss-bar.Widgets";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 		0C173A443008C98D000EDC2D /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -392,6 +525,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = swiss_bar/swiss_bar.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -407,7 +541,7 @@
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.MBI.swiss-bar-dev";
 				PRODUCT_MODULE_NAME = swiss_bar;
-				PRODUCT_NAME = "swiss_bar_dev";
+				PRODUCT_NAME = swiss_bar_dev;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
@@ -422,6 +556,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = swiss_bar/swiss_bar.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
@@ -522,6 +657,34 @@
 			};
 			name = Release;
 		};
+		1BE942EF9C8D99613647E32F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = swiss_barWidgets/swiss_barWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 7BLK6NGM28;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = swiss_barWidgets/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "com.MBI.swiss-bar-dev.Widgets";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -557,6 +720,15 @@
 			buildConfigurations = (
 				0C173A4D3008C98D000EDC2D /* Debug */,
 				0C173A4E3008C98D000EDC2D /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		EAC4BF2C2917560C20562F28 /* Build configuration list for PBXNativeTarget "swiss_barWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				00B7A285E7452CBE67D57F95 /* Release */,
+				1BE942EF9C8D99613647E32F /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

@@ -16,6 +16,7 @@ BUILD_NUMBER="${GITHUB_RUN_NUMBER:-$(git rev-list --count HEAD)}"
 BUILD_DIR="build"
 DERIVED_DATA="$BUILD_DIR/DerivedData"
 APP_PATH="$DERIVED_DATA/Build/Products/Release/swiss_bar.app"
+WIDGET_APPEX_PATH="$APP_PATH/Contents/PlugIns/swiss_barWidgets.appex"
 
 if ! security find-identity -p codesigning | grep -q "$IDENTITY"; then
   echo "error: signing identity '$IDENTITY' not found in the active keychain." >&2
@@ -33,11 +34,20 @@ xcodebuild -project swiss_bar.xcodeproj -scheme swiss_bar -configuration Release
   CODE_SIGNING_ALLOWED=NO \
   build
 
-echo "==> Signing with '$IDENTITY'"
-codesign --force --sign "$IDENTITY" --timestamp=none "$APP_PATH"
+# Nested code must be signed before the outer bundle - the widget extension ships as a
+# .appex inside Contents/PlugIns/, each with its own entitlements (sandboxed widget vs.
+# unsandboxed host app, see swiss_barWidgets/swiss_barWidgets.entitlements and
+# swiss_bar/swiss_bar.entitlements).
+echo "==> Signing widget extension with '$IDENTITY'"
+codesign --force --sign "$IDENTITY" --timestamp=none \
+  --entitlements "swiss_barWidgets/swiss_barWidgets.entitlements" "$WIDGET_APPEX_PATH"
 
-echo "==> Verifying signature"
-codesign --verify --strict -vv "$APP_PATH"
+echo "==> Signing main app with '$IDENTITY'"
+codesign --force --sign "$IDENTITY" --timestamp=none \
+  --entitlements "swiss_bar/swiss_bar.entitlements" "$APP_PATH"
+
+echo "==> Verifying signature (including nested code)"
+codesign --verify --deep --strict -vv "$APP_PATH"
 echo "Designated requirement (must stay identical release to release for TCC grants to survive):"
 codesign -dr - "$APP_PATH"
 

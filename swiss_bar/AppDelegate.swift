@@ -57,6 +57,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var workspaceObservers: [NSObjectProtocol] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Phase 0 spike only - see ClaudeUsageWidgetWriteSpike's doc comment.
+        ClaudeUsageWidgetWriteSpike.writeNow()
+
         eventTapManager.delegate = self
         clipboardHotkeyTap.delegate = self
         clipboardOverlayController.onRowTapped = { [weak self] index in
