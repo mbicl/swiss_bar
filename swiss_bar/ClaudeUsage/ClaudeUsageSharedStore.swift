@@ -30,11 +30,18 @@ struct ClaudeUsageWidgetAccountPayload: Codable, Identifiable, Equatable {
 struct ClaudeUsageSharedStore {
     private static let logger = Logger(subsystem: "com.MBI.swiss-bar", category: "ClaudeUsageSharedStore")
     static let appGroupID = "group.com.MBI.swiss-bar"
-    /// Single source of truth for the `kind:` both `ClaudeUsageMonitor`'s
-    /// `WidgetCenter.reloadTimelines(ofKind:)` call and the widget's `Widget` declaration use -
-    /// keeping them as separately-typed string literals is exactly how the two would silently
-    /// drift out of sync.
-    static let widgetKind = "ClaudeUsageWidget"
+
+    /// Single source of truth for the per-slot `kind:` both `ClaudeUsageMonitor`'s
+    /// `WidgetCenter.reloadTimelines(ofKind:)` call and each slot's `Widget` declaration use -
+    /// keeping them as separately-built string literals is exactly how the two would silently
+    /// drift out of sync. One static `Widget` type per slot (`ClaudeUsageWidgetSlot0/1/2` in
+    /// swiss_barWidgets) rather than one `AppIntentConfiguration`-based widget with an in-gallery
+    /// account picker - a real toolchain bug in this Xcode/SDK combination makes `WidgetKit`'s
+    /// `Widget`/`WidgetConfiguration` symbols unresolvable in any file of a module that also
+    /// imports `AppIntents` (reproduced with a minimal two-file repro outside Xcode entirely, so
+    /// this isn't fixable from this codebase). Three static slots also mirrors the pattern
+    /// `swiss_barApp.swift` already uses for the menu bar's `MenuBarExtra` scenes.
+    static func widgetKind(forSlot id: Int) -> String { "ClaudeUsageWidgetSlot\(id)" }
 
     let rootDirectory: URL?
 

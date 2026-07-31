@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		3D02420F3516D20AC8CD0CB5 /* WidgetKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 39103A84D92106318012F8FB /* WidgetKit.framework */; };
+		59B4C5D5B8189AB13677511A /* SwiftUI.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D35434C910BDCEE516DAA9A0 /* SwiftUI.framework */; };
 		B07CED43732D71BF98BA0B1B /* swiss_barWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA487C6B4CFC4352B4B68D6D /* swiss_barWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		B0BA9319675ECF4848C7E970 /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2DE38EE1C13C67C83196F298 /* Cocoa.framework */; };
 /* End PBXBuildFile section */
@@ -54,7 +56,10 @@
 		0C173A323008C98D000EDC2D /* swiss_barTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = swiss_barTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		0C173A3C3008C98D000EDC2D /* swiss_barUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = swiss_barUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		2DE38EE1C13C67C83196F298 /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/System/Library/Frameworks/Cocoa.framework; sourceTree = DEVELOPER_DIR; };
+		39103A84D92106318012F8FB /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/System/Library/Frameworks/WidgetKit.framework; sourceTree = DEVELOPER_DIR; };
 		AA487C6B4CFC4352B4B68D6D /* swiss_barWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = swiss_barWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B2302CD1E69C2D1A5FEA6D6C /* AppIntents.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppIntents.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/System/Library/Frameworks/AppIntents.framework; sourceTree = DEVELOPER_DIR; };
+		D35434C910BDCEE516DAA9A0 /* SwiftUI.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = SwiftUI.framework; path = Platforms/MacOSX.platform/Developer/SDKs/MacOSX26.0.sdk/System/Library/Frameworks/SwiftUI.framework; sourceTree = DEVELOPER_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -129,6 +134,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				B0BA9319675ECF4848C7E970 /* Cocoa.framework in Frameworks */,
+				3D02420F3516D20AC8CD0CB5 /* WidgetKit.framework in Frameworks */,
+				59B4C5D5B8189AB13677511A /* SwiftUI.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -162,6 +169,9 @@
 			isa = PBXGroup;
 			children = (
 				2DE38EE1C13C67C83196F298 /* Cocoa.framework */,
+				39103A84D92106318012F8FB /* WidgetKit.framework */,
+				D35434C910BDCEE516DAA9A0 /* SwiftUI.framework */,
+				B2302CD1E69C2D1A5FEA6D6C /* AppIntents.framework */,
 			);
 			name = "OS X";
 			sourceTree = "<group>";

@@ -145,6 +145,9 @@ private struct ClaudeUsageSettingsTab: View {
             Text("Up to \(ClaudeUsageAccountSettings.slotCount) independent menu bar items, one per Claude account. Point each at a different install with its own CLI command below.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
+            Text("Each enabled account is also available as a desktop/Notification Center widget - add one from the macOS widget gallery (\u{2018}Claude Usage (Slot 1/2/3)\u{2019}, matching the slot order below).")
+                .font(.caption)
+                .foregroundStyle(.secondary)
             ForEach($settings.claudeUsageAccounts) { $account in
                 Section(account.displayName.isEmpty ? "Account \(account.id + 1)" : account.displayName) {
                     ClaudeUsageAccountSettingsSection(account: $account)

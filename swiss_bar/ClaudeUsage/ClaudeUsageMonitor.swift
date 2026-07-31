@@ -122,6 +122,6 @@ final class ClaudeUsageMonitor: ObservableObject {
         widgetStore.upsertSlot(
             ClaudeUsageWidgetAccountPayload(id: accountID, displayName: displayName, snapshot: snapshot, lastUpdated: Date())
         )
-        WidgetCenter.shared.reloadTimelines(ofKind: ClaudeUsageSharedStore.widgetKind)
+        WidgetCenter.shared.reloadTimelines(ofKind: ClaudeUsageSharedStore.widgetKind(forSlot: accountID))
     }
 }

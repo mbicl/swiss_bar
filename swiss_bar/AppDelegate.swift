@@ -58,9 +58,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var workspaceObservers: [NSObjectProtocol] = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Phase 0 spike only - see ClaudeUsageWidgetWriteSpike's doc comment.
-        ClaudeUsageWidgetWriteSpike.writeNow()
-
         eventTapManager.delegate = self
         clipboardHotkeyTap.delegate = self
         clipboardOverlayController.onRowTapped = { [weak self] index in
@@ -125,7 +122,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         // (a quit app should leave the widget showing its last-known data with a
                         // growing "updated Xh ago", not blank it).
                         ClaudeUsageSharedStore().removeSlot(id: accountID)
-                        WidgetCenter.shared.reloadTimelines(ofKind: ClaudeUsageSharedStore.widgetKind)
+                        WidgetCenter.shared.reloadTimelines(ofKind: ClaudeUsageSharedStore.widgetKind(forSlot: accountID))
                     }
                 }
                 .store(in: &cancellables)
