@@ -5,6 +5,7 @@
 
 import Combine
 import Foundation
+import WidgetKit
 
 /// Polls `claude -p "/usage"` on a timer and publishes the parsed result - the same `Timer`-driven
 /// poll shape as `NetworkSpeedMonitor`, since there's no notification API for this either. One
@@ -23,9 +24,15 @@ final class ClaudeUsageMonitor: ObservableObject {
 
     private let settings: AppSettings
     private let accountID: Int
+    private let widgetStore = ClaudeUsageSharedStore()
     private var timer: Timer?
     private var initialDelayTask: Task<Void, Never>?
     private var cancellables: Set<AnyCancellable> = []
+    /// Skips the App Group write + `WidgetCenter` reload when nothing a widget would actually
+    /// display has changed - a poll that reparses to an identical snapshot (the common case at a
+    /// 5-minute cadence) must not count against WidgetKit's reload budget. Mirrors
+    /// `ClaudeUsageMenuBarImageRenderer.lastRenderKey`.
+    private var lastWidgetSyncKey: String?
 
     init(settings: AppSettings, accountID: Int) {
         self.settings = settings
@@ -101,5 +108,20 @@ final class ClaudeUsageMonitor: ObservableObject {
         }
         guard let parsed = ClaudeUsageParser.parse(raw) else { return }
         snapshot = parsed
+        syncWidgetData(snapshot: parsed)
+    }
+
+    private func syncWidgetData(snapshot: ClaudeUsageSnapshot) {
+        let displayName = settings.claudeUsageAccounts.indices.contains(accountID)
+            ? settings.claudeUsageAccounts[accountID].displayName : ""
+        let weeklyKey = snapshot.weeklyLines.map { "\($0.label):\($0.percent)" }.joined(separator: ",")
+        let key = "\(snapshot.sessionPercent)|\(weeklyKey)|\(displayName)"
+        guard key != lastWidgetSyncKey else { return }
+        lastWidgetSyncKey = key
+
+        widgetStore.upsertSlot(
+            ClaudeUsageWidgetAccountPayload(id: accountID, displayName: displayName, snapshot: snapshot, lastUpdated: Date())
+        )
+        WidgetCenter.shared.reloadTimelines(ofKind: ClaudeUsageSharedStore.widgetKind)
     }
 }

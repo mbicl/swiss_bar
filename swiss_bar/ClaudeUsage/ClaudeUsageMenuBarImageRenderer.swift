@@ -86,16 +86,6 @@ final class ClaudeUsageMenuBarImageRenderer: ObservableObject {
     }
 }
 
-extension ClaudeUsageSeverity {
-    var color: Color {
-        switch self {
-        case .good: return .green
-        case .warning: return .yellow
-        case .critical: return .red
-        }
-    }
-}
-
 /// A short leading label column distinguishing one account's status item from another's -
 /// occupies a fixed-width slot so the two content types below stay pixel-identical to their
 /// pre-multi-account layout when `label` is empty (the common single-account case), rather than

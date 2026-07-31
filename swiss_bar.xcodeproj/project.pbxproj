@@ -57,10 +57,24 @@
 		AA487C6B4CFC4352B4B68D6D /* swiss_barWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = swiss_barWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		DC652AD2CF909EE771F33D9A /* Exceptions for "swiss_bar" folder in "swiss_barWidgets" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				ClaudeUsage/ClaudeUsageSnapshot.swift,
+				ClaudeUsage/ClaudeUsageSeverity.swift,
+				ClaudeUsage/ClaudeUsageSeverityColor.swift,
+				ClaudeUsage/ClaudeUsageSharedStore.swift,
+			);
+			target = 2021601FB3DCD04C71E9BE80 /* swiss_barWidgets */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		0C173A273008C98B000EDC2D /* swiss_bar */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
+				DC652AD2CF909EE771F33D9A /* Exceptions for "swiss_bar" folder in "swiss_barWidgets" target */,
 			);
 			path = swiss_bar;
 			sourceTree = "<group>";

@@ -5,6 +5,7 @@
 
 import AppKit
 import Combine
+import WidgetKit
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let permissionManager = AccessibilityPermissionManager()
@@ -118,6 +119,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         claudeUsageMonitors[accountID].start()
                     } else {
                         claudeUsageMonitors[accountID].stop()
+                        // A widget still configured to show this slot shouldn't keep displaying
+                        // stale numbers forever once its account is disabled - distinct from
+                        // applicationWillTerminate's stop() calls below, which must NOT clear this
+                        // (a quit app should leave the widget showing its last-known data with a
+                        // growing "updated Xh ago", not blank it).
+                        ClaudeUsageSharedStore().removeSlot(id: accountID)
+                        WidgetCenter.shared.reloadTimelines(ofKind: ClaudeUsageSharedStore.widgetKind)
                     }
                 }
                 .store(in: &cancellables)

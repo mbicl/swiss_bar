@@ -8,7 +8,7 @@ import Foundation
 /// Parsed result of a `claude -p "/usage"` invocation. Reset times are kept as the raw display
 /// string (e.g. "Jul 22 at 8:20pm (Asia/Samarkand)") rather than parsed into a `Date` - the source
 /// string has no year and nothing here needs countdown math, just display.
-struct ClaudeUsageSnapshot {
+struct ClaudeUsageSnapshot: Codable, Equatable {
     let sessionPercent: Int
     /// `nil` when no session is currently active (e.g. right after a reset, before the next
     /// message) - `/usage` then omits the "· resets ..." suffix entirely.
@@ -20,18 +20,18 @@ struct ClaudeUsageSnapshot {
     let contributing: ClaudeUsageContributing?
 }
 
-struct ClaudeUsageWeeklyLine {
+struct ClaudeUsageWeeklyLine: Codable, Equatable {
     let label: String
     let percent: Int
     let resetDescription: String
 }
 
-struct ClaudeUsageContributing {
+struct ClaudeUsageContributing: Codable, Equatable {
     let last24h: ClaudeUsagePeriod
     let last7d: ClaudeUsagePeriod
 }
 
-struct ClaudeUsagePeriod {
+struct ClaudeUsagePeriod: Codable, Equatable {
     let requestCount: Int
     let sessionCount: Int
     let subagentHeavyPercent: Int?
@@ -43,7 +43,7 @@ struct ClaudeUsagePeriod {
     let topSubagents: [ClaudeUsageNamedPercent]
 }
 
-struct ClaudeUsageNamedPercent {
+struct ClaudeUsageNamedPercent: Codable, Equatable {
     let name: String
     let percent: Int
 }
