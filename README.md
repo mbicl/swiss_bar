@@ -14,7 +14,9 @@ cleaning mode, and live network/Claude usage indicators, all in one lightweight 
 - [x] **Network speed indicator** — shows live download/upload speed in the menubar, with a
   dropdown graph of recent history.
 - [x] **Claude usage indicator** — shows Claude Code session/weekly usage in the menubar, colored
-  by how close you are to the limit, similar to the Claude web app.
+  by how close you are to the limit, similar to the Claude web app. Also available as a
+  desktop/Notification Center widget (add "Claude Usage" from the macOS widget gallery), showing
+  the same data without needing the app in the menu bar.
 
 All five are implemented and shipping in [Releases](https://github.com/mbicl/swiss_bar/releases).
 
