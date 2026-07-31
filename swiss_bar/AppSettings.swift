@@ -22,9 +22,14 @@ final class AppSettings: ObservableObject {
         static let networkSpeedEnabled = "feature.networkSpeed.enabled"
         static let networkSpeedUploadColorHex = "feature.networkSpeed.uploadColorHex"
         static let networkSpeedDownloadColorHex = "feature.networkSpeed.downloadColorHex"
-        static let claudeUsageEnabled = "feature.claudeUsage.enabled"
-        static let claudeUsageShowWeeklyInMenuBar = "feature.claudeUsage.showWeeklyInMenuBar"
-        static let claudeUsageCLICommand = "feature.claudeUsage.cliCommand"
+        static let claudeUsageAccounts = "feature.claudeUsage.accounts"
+        // Pre-multi-account keys, read only by the one-time migration in `init` below - never
+        // written to again, but kept indefinitely (not deleted post-migration) so a user who
+        // downgrades to an older build (this ships via signed DMGs, not an auto-updating store)
+        // still finds their old single-account config intact.
+        static let legacyClaudeUsageEnabled = "feature.claudeUsage.enabled"
+        static let legacyClaudeUsageShowWeeklyInMenuBar = "feature.claudeUsage.showWeeklyInMenuBar"
+        static let legacyClaudeUsageCLICommand = "feature.claudeUsage.cliCommand"
     }
 
     @Published var windowSwitcherEnabled: Bool {
@@ -56,20 +61,16 @@ final class AppSettings: ObservableObject {
     @Published var networkSpeedDownloadColor: Color {
         didSet { defaults.set(ColorHex.hexString(from: networkSpeedDownloadColor), forKey: Keys.networkSpeedDownloadColorHex) }
     }
-    @Published var claudeUsageEnabled: Bool {
-        didSet { defaults.set(claudeUsageEnabled, forKey: Keys.claudeUsageEnabled) }
-    }
-    @Published var claudeUsageMenuBarStyle: ClaudeUsageMenuBarStyle {
-        didSet { defaults.set(claudeUsageMenuBarStyle.rawValue, forKey: ClaudeUsageMenuBarStyle.defaultsKey) }
-    }
-    @Published var claudeUsageShowWeeklyInMenuBar: Bool {
-        didSet { defaults.set(claudeUsageShowWeeklyInMenuBar, forKey: Keys.claudeUsageShowWeeklyInMenuBar) }
-    }
-    /// Executable name (resolved via the login shell's PATH, so a bare name works the same as a
-    /// full path) or absolute path - lets a user with multiple Claude Code installs (e.g.
-    /// `claude-work`, `claude-personal`) point the usage monitor at the right one.
-    @Published var claudeUsageCLICommand: String {
-        didSet { defaults.set(claudeUsageCLICommand, forKey: Keys.claudeUsageCLICommand) }
+    /// Always exactly `ClaudeUsageAccountSettings.slotCount` elements with ids `0..<slotCount` -
+    /// every consumer (monitors, renderers, the 3 hardcoded `MenuBarExtra` scenes) indexes this
+    /// array by slot, so `AppSettings.normalized(_:)` enforces that shape on every write path
+    /// (decode success, decode failure, and the one-time migration) rather than trusting it.
+    @Published var claudeUsageAccounts: [ClaudeUsageAccountSettings] {
+        didSet {
+            if let data = try? Self.jsonEncoder.encode(claudeUsageAccounts) {
+                defaults.set(data, forKey: Keys.claudeUsageAccounts)
+            }
+        }
     }
     @Published var switcherStyle: SwitcherStyle {
         didSet { defaults.set(switcherStyle.rawValue, forKey: SwitcherStyle.defaultsKey) }
@@ -85,6 +86,9 @@ final class AppSettings: ObservableObject {
     private static let defaultUploadColorHex = "#FDD464FF"
     private static let defaultDownloadColorHex = "#A4FFB1FF"
 
+    private static let jsonEncoder = JSONEncoder()
+    private static let jsonDecoder = JSONDecoder()
+
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -99,12 +103,47 @@ final class AppSettings: ObservableObject {
             ?? ColorHex.color(fromHex: Self.defaultUploadColorHex) ?? .yellow
         networkSpeedDownloadColor = defaults.string(forKey: Keys.networkSpeedDownloadColorHex).flatMap(ColorHex.color(fromHex:))
             ?? ColorHex.color(fromHex: Self.defaultDownloadColorHex) ?? .mint
-        claudeUsageEnabled = defaults.object(forKey: Keys.claudeUsageEnabled) as? Bool ?? false
-        claudeUsageMenuBarStyle = defaults.string(forKey: ClaudeUsageMenuBarStyle.defaultsKey).flatMap(ClaudeUsageMenuBarStyle.init) ?? .numbers
-        claudeUsageShowWeeklyInMenuBar = defaults.object(forKey: Keys.claudeUsageShowWeeklyInMenuBar) as? Bool ?? true
-        claudeUsageCLICommand = defaults.string(forKey: Keys.claudeUsageCLICommand) ?? "claude"
+        claudeUsageAccounts = Self.loadClaudeUsageAccounts(from: defaults)
         switcherStyle = defaults.string(forKey: SwitcherStyle.defaultsKey).flatMap(SwitcherStyle.init) ?? .horizontal
         switcherSize = defaults.string(forKey: SwitcherSize.defaultsKey).flatMap(SwitcherSize.init) ?? .medium
         switcherTileContent = defaults.string(forKey: SwitcherTileContent.defaultsKey).flatMap(SwitcherTileContent.init) ?? .appIcon
+    }
+
+    /// Loads the per-account array if present, otherwise migrates the old single-account flat
+    /// keys into slot 0 (only run once - the new key's presence is what marks migration as done).
+    /// Always returns exactly `ClaudeUsageAccountSettings.slotCount` elements with ids
+    /// `0..<slotCount`, regardless of what was actually stored - every consumer indexes this array
+    /// by slot, so a corrupt or hand-edited defaults value must degrade to defaults, never crash.
+    private static func loadClaudeUsageAccounts(from defaults: UserDefaults) -> [ClaudeUsageAccountSettings] {
+        if let data = defaults.data(forKey: Keys.claudeUsageAccounts),
+           let decoded = try? jsonDecoder.decode([ClaudeUsageAccountSettings].self, from: data) {
+            return normalized(decoded)
+        }
+
+        var accounts = ClaudeUsageAccountSettings.defaults()
+        if defaults.object(forKey: Keys.legacyClaudeUsageEnabled) != nil {
+            accounts[0].enabled = defaults.object(forKey: Keys.legacyClaudeUsageEnabled) as? Bool ?? false
+            accounts[0].cliCommand = defaults.string(forKey: Keys.legacyClaudeUsageCLICommand) ?? "claude"
+            accounts[0].menuBarStyle = defaults.string(forKey: ClaudeUsageMenuBarStyle.defaultsKey)
+                .flatMap(ClaudeUsageMenuBarStyle.init) ?? .numbers
+            accounts[0].showWeeklyInMenuBar = defaults.object(forKey: Keys.legacyClaudeUsageShowWeeklyInMenuBar) as? Bool ?? true
+        }
+        return normalized(accounts)
+    }
+
+    /// Forces any array (freshly decoded, migrated, or otherwise) to exactly `slotCount` elements
+    /// with ids `0..<slotCount` - truncates extras, pads missing slots with defaults, and
+    /// reassigns ids so a stale/tampered `id` field can never desync from its array position.
+    private static func normalized(_ accounts: [ClaudeUsageAccountSettings]) -> [ClaudeUsageAccountSettings] {
+        var result = accounts
+        if result.count > ClaudeUsageAccountSettings.slotCount {
+            result = Array(result.prefix(ClaudeUsageAccountSettings.slotCount))
+        } else if result.count < ClaudeUsageAccountSettings.slotCount {
+            result += (result.count..<ClaudeUsageAccountSettings.slotCount).map { ClaudeUsageAccountSettings(id: $0) }
+        }
+        for index in result.indices {
+            result[index].id = index
+        }
+        return result
     }
 }

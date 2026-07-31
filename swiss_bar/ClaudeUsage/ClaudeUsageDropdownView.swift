@@ -10,10 +10,15 @@ import SwiftUI
 /// it. Weekly usage is always shown here regardless of the menu-bar-only "show weekly" setting.
 struct ClaudeUsageDropdownView: View {
     @ObservedObject var monitor: ClaudeUsageMonitor
+    var displayName: String = ""
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
+                if !displayName.isEmpty {
+                    Text(displayName)
+                        .font(.title3.bold())
+                }
                 updateButton
                 if let snapshot = monitor.snapshot {
                     headline(snapshot: snapshot)

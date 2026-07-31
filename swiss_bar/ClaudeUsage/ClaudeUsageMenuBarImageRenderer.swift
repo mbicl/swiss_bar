@@ -26,24 +26,25 @@ final class ClaudeUsageMenuBarImageRenderer: ObservableObject {
     private var cancellable: AnyCancellable?
     /// Skips re-rendering (and re-rastering via `ImageRenderer`) when nothing actually changed -
     /// see `NetworkSpeedMenuBarImageRenderer.lastRenderKey` for why this matters even at a slow
-    /// (5-minute) poll cadence: every settings change re-publishes the same snapshot too.
+    /// (5-minute) poll cadence: every settings change re-publishes the same snapshot too. Includes
+    /// `displayName` - omitting it would mean renaming an account never repaints its menu bar item.
     private var lastRenderKey: String?
 
-    init(monitor: ClaudeUsageMonitor, settings: AppSettings) {
-        cancellable = Publishers.CombineLatest3(
-            monitor.$snapshot,
-            settings.$claudeUsageMenuBarStyle,
-            settings.$claudeUsageShowWeeklyInMenuBar
-        )
-        .sink { [weak self] snapshot, style, showWeekly in
-            self?.render(snapshot: snapshot, style: style, showWeekly: showWeekly)
-        }
+    init(monitor: ClaudeUsageMonitor, settings: AppSettings, accountID: Int) {
+        cancellable = Publishers.CombineLatest(monitor.$snapshot, settings.$claudeUsageAccounts)
+            .sink { [weak self, accountID] snapshot, accounts in
+                // Reads the *emitted* array, not `settings.claudeUsageAccounts` - `@Published`
+                // fires from `willSet`, so the stored property would still show the old value.
+                guard accounts.indices.contains(accountID) else { return }
+                let account = accounts[accountID]
+                self?.render(snapshot: snapshot, style: account.menuBarStyle, showWeekly: account.showWeeklyInMenuBar, displayName: account.displayName)
+            }
     }
 
-    private func render(snapshot: ClaudeUsageSnapshot?, style: ClaudeUsageMenuBarStyle, showWeekly: Bool) {
+    private func render(snapshot: ClaudeUsageSnapshot?, style: ClaudeUsageMenuBarStyle, showWeekly: Bool, displayName: String) {
         guard let snapshot else {
             image = nil
-            accessibilityDescription = "Claude usage unavailable"
+            accessibilityDescription = displayName.isEmpty ? "Claude usage unavailable" : "\(displayName) Claude usage unavailable"
             lastRenderKey = nil
             return
         }
@@ -52,15 +53,15 @@ final class ClaudeUsageMenuBarImageRenderer: ObservableObject {
             ?? snapshot.weeklyLines.first?.percent
         let displayedWeeklyPercent = showWeekly ? weeklyPercent : nil
 
-        let key = "\(snapshot.sessionPercent)|\(String(describing: displayedWeeklyPercent))|\(style.rawValue)"
+        let key = "\(snapshot.sessionPercent)|\(String(describing: displayedWeeklyPercent))|\(style.rawValue)|\(displayName)"
         guard key != lastRenderKey else { return }
 
         let content: AnyView
         switch style {
         case .numbers:
-            content = AnyView(ClaudeUsageMenuBarNumbersContent(sessionPercent: snapshot.sessionPercent, weeklyPercent: displayedWeeklyPercent))
+            content = AnyView(ClaudeUsageMenuBarNumbersContent(sessionPercent: snapshot.sessionPercent, weeklyPercent: displayedWeeklyPercent, label: displayName))
         case .progressBars:
-            content = AnyView(ClaudeUsageMenuBarProgressBarsContent(sessionPercent: snapshot.sessionPercent, weeklyPercent: displayedWeeklyPercent))
+            content = AnyView(ClaudeUsageMenuBarProgressBarsContent(sessionPercent: snapshot.sessionPercent, weeklyPercent: displayedWeeklyPercent, label: displayName))
         }
 
         let renderer = ImageRenderer(content: content)
@@ -75,7 +76,8 @@ final class ClaudeUsageMenuBarImageRenderer: ObservableObject {
         nsImage.isTemplate = false
         image = nsImage
 
-        var description = "Claude session usage \(snapshot.sessionPercent) percent"
+        var description = displayName.isEmpty ? "Claude" : displayName
+        description += " session usage \(snapshot.sessionPercent) percent"
         if let displayedWeeklyPercent {
             description += ", weekly usage \(displayedWeeklyPercent) percent"
         }
@@ -94,23 +96,45 @@ extension ClaudeUsageSeverity {
     }
 }
 
+/// A short leading label column distinguishing one account's status item from another's -
+/// occupies a fixed-width slot so the two content types below stay pixel-identical to their
+/// pre-multi-account layout when `label` is empty (the common single-account case), rather than
+/// growing a 3rd stacked line into the already-tight 24pt-tall menu bar.
+private struct ClaudeUsageMenuBarAccountLabel: View {
+    let label: String
+
+    var body: some View {
+        if !label.isEmpty {
+            Text(label)
+                .font(.system(size: 9, weight: .semibold))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(width: 30, height: 24, alignment: .leading)
+        }
+    }
+}
+
 /// Two lines of colored percentage text. Fixed frame so the bitmap's pixel size doesn't jump as
 /// digit widths change - matches `NetworkSpeedMenuBarLabelContent`'s convention.
 struct ClaudeUsageMenuBarNumbersContent: View {
     let sessionPercent: Int
     let weeklyPercent: Int?
+    var label: String = ""
 
     var body: some View {
-        VStack(alignment: .trailing, spacing: 0) {
-            Text("Session \(sessionPercent)%")
-                .foregroundStyle(ClaudeUsageThreshold.severity(forPercent: sessionPercent).color)
-            if let weeklyPercent {
-                Text("Week \(weeklyPercent)%")
-                    .foregroundStyle(ClaudeUsageThreshold.severity(forPercent: weeklyPercent).color)
+        HStack(spacing: 3) {
+            ClaudeUsageMenuBarAccountLabel(label: label)
+            VStack(alignment: .trailing, spacing: 0) {
+                Text("Session \(sessionPercent)%")
+                    .foregroundStyle(ClaudeUsageThreshold.severity(forPercent: sessionPercent).color)
+                if let weeklyPercent {
+                    Text("Week \(weeklyPercent)%")
+                        .foregroundStyle(ClaudeUsageThreshold.severity(forPercent: weeklyPercent).color)
+                }
             }
+            .frame(width: 74, height: 24, alignment: .trailing)
         }
         .font(.system(size: 9, weight: .medium).monospacedDigit())
-        .frame(width: 74, height: 24, alignment: .trailing)
     }
 }
 
@@ -119,18 +143,22 @@ struct ClaudeUsageMenuBarNumbersContent: View {
 struct ClaudeUsageMenuBarProgressBarsContent: View {
     let sessionPercent: Int
     let weeklyPercent: Int?
+    var label: String = ""
 
     private static let barWidth: CGFloat = 40
     private static let barHeight: CGFloat = 6
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            bar(percent: sessionPercent)
-            if let weeklyPercent {
-                bar(percent: weeklyPercent)
+        HStack(spacing: 3) {
+            ClaudeUsageMenuBarAccountLabel(label: label)
+            VStack(alignment: .leading, spacing: 3) {
+                bar(percent: sessionPercent)
+                if let weeklyPercent {
+                    bar(percent: weeklyPercent)
+                }
             }
+            .frame(width: Self.barWidth, height: 24, alignment: .center)
         }
-        .frame(width: Self.barWidth, height: 24, alignment: .center)
     }
 
     private func bar(percent: Int) -> some View {

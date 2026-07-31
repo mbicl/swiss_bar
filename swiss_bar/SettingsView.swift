@@ -142,23 +142,37 @@ private struct ClaudeUsageSettingsTab: View {
 
     var body: some View {
         Form {
-            Toggle("Enable Claude usage indicator", isOn: $settings.claudeUsageEnabled)
-            Picker("Menu bar style", selection: $settings.claudeUsageMenuBarStyle) {
-                Text("Numbers").tag(ClaudeUsageMenuBarStyle.numbers)
-                Text("Progress Bars").tag(ClaudeUsageMenuBarStyle.progressBars)
+            Text("Up to \(ClaudeUsageAccountSettings.slotCount) independent menu bar items, one per Claude account. Point each at a different install with its own CLI command below.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            ForEach($settings.claudeUsageAccounts) { $account in
+                Section(account.displayName.isEmpty ? "Account \(account.id + 1)" : account.displayName) {
+                    ClaudeUsageAccountSettingsSection(account: $account)
+                }
             }
-            .disabled(!settings.claudeUsageEnabled)
-            Toggle("Show weekly usage in menu bar", isOn: $settings.claudeUsageShowWeeklyInMenuBar)
-                .disabled(!settings.claudeUsageEnabled)
-            TextField("CLI command", text: $settings.claudeUsageCLICommand, prompt: Text("claude"))
-                .disabled(!settings.claudeUsageEnabled)
-            Text("The command run to fetch usage (\"<command> -p '/usage'\"). If you have more than one Claude Code install set up as a shell alias, enter the underlying command instead of the alias name, e.g. \"CLAUDE_CONFIG_DIR=~/.claude-work claude\" rather than \"claude-work\" - this field can't see your shell's alias definitions.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text("Shows live Claude Code session/weekly usage as a separate menu bar item, colored green/yellow/red by how close you are to the limit. Click it for the full usage breakdown.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
         .formStyle(.grouped)
+    }
+}
+
+private struct ClaudeUsageAccountSettingsSection: View {
+    @Binding var account: ClaudeUsageAccountSettings
+
+    var body: some View {
+        Toggle("Enable this indicator", isOn: $account.enabled)
+        TextField("Label", text: $account.displayName, prompt: Text("Account \(account.id + 1)"))
+            .disabled(!account.enabled)
+        Picker("Menu bar style", selection: $account.menuBarStyle) {
+            Text("Numbers").tag(ClaudeUsageMenuBarStyle.numbers)
+            Text("Progress Bars").tag(ClaudeUsageMenuBarStyle.progressBars)
+        }
+        .disabled(!account.enabled)
+        Toggle("Show weekly usage in menu bar", isOn: $account.showWeeklyInMenuBar)
+            .disabled(!account.enabled)
+        TextField("CLI command", text: $account.cliCommand, prompt: Text("claude"))
+            .disabled(!account.enabled)
+        Text("The command run to fetch usage (\"<command> -p '/usage'\"). If you have more than one Claude Code install set up as a shell alias, enter the underlying command instead of the alias name, e.g. \"CLAUDE_CONFIG_DIR=~/.claude-work claude\" rather than \"claude-work\" - this field can't see your shell's alias definitions. The label above (keep it short, ~5 characters) is what distinguishes this item from your other accounts' in the menu bar.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
     }
 }

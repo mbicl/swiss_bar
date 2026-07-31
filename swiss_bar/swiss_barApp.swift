@@ -39,11 +39,30 @@ struct swiss_barApp: App {
         .menuBarExtraStyle(.window)
 
         // Same `.constant(...)` rationale as above - never a two-way binding to a `@Published`
-        // property on `isInserted:`.
-        MenuBarExtra(isInserted: .constant(settings.claudeUsageEnabled)) {
-            ClaudeUsageDropdownView(monitor: appDelegate.claudeUsageMonitor)
+        // property on `isInserted:`. `MenuBarExtra` scenes must be declared statically (no
+        // `ForEach` over a dynamic array in a `Scene` body), so this is 3 hardcoded blocks - one
+        // per `ClaudeUsageAccountSettings.slotCount` slot - rather than a loop. Reading
+        // `settings.claudeUsageAccounts[i]` directly here (rather than via a Combine sink) is
+        // safe: `body` re-evaluates with the new value after the mutation lands, unlike a sink
+        // watching `$claudeUsageAccounts`, which sees the old value from `willSet`.
+        MenuBarExtra(isInserted: .constant(settings.claudeUsageAccounts[0].enabled)) {
+            ClaudeUsageDropdownView(monitor: appDelegate.claudeUsageMonitors[0], displayName: settings.claudeUsageAccounts[0].displayName)
         } label: {
-            ClaudeUsageMenuBarLabel(imageRenderer: appDelegate.claudeUsageMenuBarImageRenderer)
+            ClaudeUsageMenuBarLabel(imageRenderer: appDelegate.claudeUsageMenuBarImageRenderers[0])
+        }
+        .menuBarExtraStyle(.window)
+
+        MenuBarExtra(isInserted: .constant(settings.claudeUsageAccounts[1].enabled)) {
+            ClaudeUsageDropdownView(monitor: appDelegate.claudeUsageMonitors[1], displayName: settings.claudeUsageAccounts[1].displayName)
+        } label: {
+            ClaudeUsageMenuBarLabel(imageRenderer: appDelegate.claudeUsageMenuBarImageRenderers[1])
+        }
+        .menuBarExtraStyle(.window)
+
+        MenuBarExtra(isInserted: .constant(settings.claudeUsageAccounts[2].enabled)) {
+            ClaudeUsageDropdownView(monitor: appDelegate.claudeUsageMonitors[2], displayName: settings.claudeUsageAccounts[2].displayName)
+        } label: {
+            ClaudeUsageMenuBarLabel(imageRenderer: appDelegate.claudeUsageMenuBarImageRenderers[2])
         }
         .menuBarExtraStyle(.window)
 

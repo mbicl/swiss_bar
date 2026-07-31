@@ -12,8 +12,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let keyboardCleaningManager = KeyboardCleaningManager()
     let networkSpeedMonitor = NetworkSpeedMonitor()
     lazy var networkSpeedMenuBarImageRenderer = NetworkSpeedMenuBarImageRenderer(monitor: networkSpeedMonitor, settings: settings)
-    lazy var claudeUsageMonitor = ClaudeUsageMonitor(settings: settings)
-    lazy var claudeUsageMenuBarImageRenderer = ClaudeUsageMenuBarImageRenderer(monitor: claudeUsageMonitor, settings: settings)
+    /// One monitor/renderer pair per Claude usage account slot (see `ClaudeUsageAccountSettings`) -
+    /// `swiss_barApp.swift` declares 3 static `MenuBarExtra` scenes indexing into these by slot.
+    lazy var claudeUsageMonitors: [ClaudeUsageMonitor] =
+        (0..<ClaudeUsageAccountSettings.slotCount).map { ClaudeUsageMonitor(settings: settings, accountID: $0) }
+    lazy var claudeUsageMenuBarImageRenderers: [ClaudeUsageMenuBarImageRenderer] =
+        claudeUsageMonitors.enumerated().map { accountID, monitor in
+            ClaudeUsageMenuBarImageRenderer(monitor: monitor, settings: settings, accountID: accountID)
+        }
 
     private let settings = AppSettings.shared
     private let switcherViewModel = SwitcherViewModel()
@@ -95,18 +101,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             .store(in: &cancellables)
 
-        // Emits the current value on subscribe, so this also performs the initial install.
-        settings.$claudeUsageEnabled
-            .removeDuplicates()
-            .sink { [weak self] enabled in
-                guard let self else { return }
-                if enabled {
-                    claudeUsageMonitor.start()
-                } else {
-                    claudeUsageMonitor.stop()
+        // One subscription per account slot, each watching only that slot's `enabled` flag -
+        // emits the current value on subscribe, so this also performs the initial install.
+        // `@Published` fires from `willSet`, so `accounts[accountID]` here is always the freshly
+        // emitted value, not the stale stored property.
+        for accountID in 0..<ClaudeUsageAccountSettings.slotCount {
+            settings.$claudeUsageAccounts
+                .compactMap { accounts in accounts.indices.contains(accountID) ? accounts[accountID].enabled : nil }
+                .removeDuplicates()
+                .sink { [weak self] enabled in
+                    guard let self, claudeUsageMonitors.indices.contains(accountID) else { return }
+                    if enabled {
+                        claudeUsageMonitors[accountID].start()
+                    } else {
+                        claudeUsageMonitors[accountID].stop()
+                    }
                 }
-            }
-            .store(in: &cancellables)
+                .store(in: &cancellables)
+        }
 
         // Start capturing window AX elements at creation time so windows on other Spaces stay
         // activatable regardless of whether their Space has been displayed.
@@ -181,7 +193,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         clipboardHotkeyTap.uninstall()
         clipboardMonitor.stop()
         networkSpeedMonitor.stop()
-        claudeUsageMonitor.stop()
+        claudeUsageMonitors.forEach { $0.stop() }
         spaceChangeRefresh?.cancel()
         let center = NSWorkspace.shared.notificationCenter
         workspaceObservers.forEach { center.removeObserver($0) }

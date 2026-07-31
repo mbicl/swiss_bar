@@ -7,20 +7,29 @@ import Combine
 import Foundation
 
 /// Polls `claude -p "/usage"` on a timer and publishes the parsed result - the same `Timer`-driven
-/// poll shape as `NetworkSpeedMonitor`, since there's no notification API for this either.
+/// poll shape as `NetworkSpeedMonitor`, since there's no notification API for this either. One
+/// instance per Claude usage account slot (see `ClaudeUsageAccountSettings`); `accountID` is which
+/// element of `settings.claudeUsageAccounts` this instance tracks.
 @MainActor
 final class ClaudeUsageMonitor: ObservableObject {
     private static let pollInterval: TimeInterval = 300
+    /// Initial poll delay per slot (`accountID * initialDelayStep`) - without this, N enabled
+    /// accounts all fire their first `refreshNow()` at launch simultaneously (N concurrent Claude
+    /// Code CLI subprocess starts), and their repeating timers then stay in phase forever.
+    private static let initialDelayStep: TimeInterval = 5
 
     @Published private(set) var snapshot: ClaudeUsageSnapshot?
     @Published private(set) var isRefreshing = false
 
     private let settings: AppSettings
+    private let accountID: Int
     private var timer: Timer?
+    private var initialDelayTask: Task<Void, Never>?
     private var cancellables: Set<AnyCancellable> = []
 
-    init(settings: AppSettings) {
+    init(settings: AppSettings, accountID: Int) {
         self.settings = settings
+        self.accountID = accountID
     }
 
     func start() {
@@ -34,14 +43,25 @@ final class ClaudeUsageMonitor: ObservableObject {
         // 5 minutes - measurable battery cost for an always-running background app otherwise.
         newTimer.tolerance = Self.pollInterval * 0.2
         timer = newTimer
-        refreshNow()
 
-        // Re-poll immediately when the CLI command changes, rather than waiting up to 5 minutes -
-        // debounced since a `TextField` binding publishes on every keystroke, and firing a
-        // subprocess per keystroke while typing a command name would be wasteful. `dropFirst()`
-        // skips the emit-on-subscribe value so this doesn't double the `refreshNow()` call above.
-        settings.$claudeUsageCLICommand
+        let delay = Self.initialDelayStep * Double(accountID)
+        initialDelayTask = Task { @MainActor [weak self] in
+            if delay > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                guard !Task.isCancelled else { return }
+            }
+            self?.refreshNow()
+        }
+
+        // Re-poll immediately when this account's CLI command changes, rather than waiting up to
+        // 5 minutes - debounced since a `TextField` binding publishes on every keystroke, and
+        // firing a subprocess per keystroke while typing a command name would be wasteful.
+        // `dropFirst()` skips the emit-on-subscribe value so this doesn't double the initial poll
+        // above. Reads the *emitted* array element, not `settings.claudeUsageAccounts` - `@Published`
+        // fires from `willSet`, so reading the stored property here would see the stale value.
+        settings.$claudeUsageAccounts
             .dropFirst()
+            .compactMap { [accountID] accounts in accounts.indices.contains(accountID) ? accounts[accountID].cliCommand : nil }
             .removeDuplicates()
             .debounce(for: .seconds(1), scheduler: RunLoop.main)
             .sink { [weak self] _ in
@@ -53,6 +73,8 @@ final class ClaudeUsageMonitor: ObservableObject {
     func stop() {
         timer?.invalidate()
         timer = nil
+        initialDelayTask?.cancel()
+        initialDelayTask = nil
         cancellables.removeAll()
     }
 
@@ -72,7 +94,7 @@ final class ClaudeUsageMonitor: ObservableObject {
         isRefreshing = true
         defer { isRefreshing = false }
 
-        guard let raw = await ClaudeUsageCLIReader.readUsage(command: settings.claudeUsageCLICommand) else {
+        guard let raw = await ClaudeUsageCLIReader.readUsage(command: settings.claudeUsageAccounts[accountID].cliCommand) else {
             // Leave the last-known-good snapshot displayed rather than blanking on one transient
             // failure (subprocess timeout, momentary network blip affecting the CLI, etc.).
             return

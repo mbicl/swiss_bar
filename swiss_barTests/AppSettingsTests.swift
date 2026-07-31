@@ -25,7 +25,7 @@ struct AppSettingsTests {
         #expect(settings.windowSwitcherEnabled == false)
         #expect(settings.clipboardHistoryEnabled == false)
         #expect(settings.networkSpeedEnabled == false)
-        #expect(settings.claudeUsageEnabled == false)
+        #expect(settings.claudeUsageAccounts.allSatisfy { !$0.enabled })
     }
 
     @Test func switcherStyleDefaultsToHorizontal() {
@@ -143,5 +143,96 @@ struct AppSettingsTests {
         let reloaded = AppSettings(defaults: defaults)
         #expect(ColorHex.hexString(from: reloaded.networkSpeedUploadColor) == ColorHex.hexString(from: .red))
         #expect(ColorHex.hexString(from: reloaded.networkSpeedDownloadColor) == ColorHex.hexString(from: .blue))
+    }
+
+    @Test func claudeUsageAccountsDefaultToThreeDisabledSlots() {
+        let settings = AppSettings(defaults: makeDefaults())
+
+        #expect(settings.claudeUsageAccounts.count == ClaudeUsageAccountSettings.slotCount)
+        #expect(settings.claudeUsageAccounts.map(\.id) == Array(0..<ClaudeUsageAccountSettings.slotCount))
+        #expect(settings.claudeUsageAccounts.allSatisfy { !$0.enabled && $0.cliCommand == "claude" })
+    }
+
+    @Test func claudeUsageAccountsRoundTripAndLeaveOtherSlotsUntouched() {
+        let defaults = makeDefaults()
+
+        let settings = AppSettings(defaults: defaults)
+        settings.claudeUsageAccounts[1].enabled = true
+        settings.claudeUsageAccounts[1].displayName = "Work"
+        settings.claudeUsageAccounts[1].cliCommand = "CLAUDE_CONFIG_DIR=~/.claude-work claude"
+
+        let reloaded = AppSettings(defaults: defaults)
+        #expect(reloaded.claudeUsageAccounts[1].enabled == true)
+        #expect(reloaded.claudeUsageAccounts[1].displayName == "Work")
+        #expect(reloaded.claudeUsageAccounts[1].cliCommand == "CLAUDE_CONFIG_DIR=~/.claude-work claude")
+        #expect(reloaded.claudeUsageAccounts[0].enabled == false)
+        #expect(reloaded.claudeUsageAccounts[2].enabled == false)
+    }
+
+    @Test func legacyClaudeUsageKeysMigrateIntoSlotZero() {
+        let defaults = makeDefaults()
+        defaults.set(true, forKey: AppSettings.Keys.legacyClaudeUsageEnabled)
+        defaults.set("CLAUDE_CONFIG_DIR=~/.claude-work claude", forKey: AppSettings.Keys.legacyClaudeUsageCLICommand)
+        defaults.set(false, forKey: AppSettings.Keys.legacyClaudeUsageShowWeeklyInMenuBar)
+        defaults.set(ClaudeUsageMenuBarStyle.progressBars.rawValue, forKey: ClaudeUsageMenuBarStyle.defaultsKey)
+
+        let settings = AppSettings(defaults: defaults)
+
+        #expect(settings.claudeUsageAccounts[0].enabled == true)
+        #expect(settings.claudeUsageAccounts[0].cliCommand == "CLAUDE_CONFIG_DIR=~/.claude-work claude")
+        #expect(settings.claudeUsageAccounts[0].showWeeklyInMenuBar == false)
+        #expect(settings.claudeUsageAccounts[0].menuBarStyle == .progressBars)
+        #expect(settings.claudeUsageAccounts[1].enabled == false)
+        #expect(settings.claudeUsageAccounts[2].enabled == false)
+    }
+
+    @Test func legacyClaudeUsageKeysDoNotOverrideAnAlreadyMigratedArray() {
+        let defaults = makeDefaults()
+        defaults.set(true, forKey: AppSettings.Keys.legacyClaudeUsageEnabled)
+        defaults.set("claude-legacy", forKey: AppSettings.Keys.legacyClaudeUsageCLICommand)
+
+        // First construction performs the migration and persists the new array key.
+        _ = AppSettings(defaults: defaults)
+        // Simulate the user having since changed slot 0 through the new storage.
+        let migrated = AppSettings(defaults: defaults)
+        migrated.claudeUsageAccounts[0].cliCommand = "claude-current"
+
+        let reloaded = AppSettings(defaults: defaults)
+        #expect(reloaded.claudeUsageAccounts[0].cliCommand == "claude-current")
+    }
+
+    @Test func corruptClaudeUsageAccountsDataFallsBackToDefaults() {
+        let defaults = makeDefaults()
+        defaults.set(Data("not json".utf8), forKey: AppSettings.Keys.claudeUsageAccounts)
+
+        let settings = AppSettings(defaults: defaults)
+        #expect(settings.claudeUsageAccounts.count == ClaudeUsageAccountSettings.slotCount)
+        #expect(settings.claudeUsageAccounts.map(\.id) == Array(0..<ClaudeUsageAccountSettings.slotCount))
+    }
+
+    @Test func oversizedClaudeUsageAccountsArrayIsTruncatedAndReindexed() throws {
+        let defaults = makeDefaults()
+        let oversized = (0..<5).map { ClaudeUsageAccountSettings(id: $0, displayName: "Slot\($0)") }
+        let data = try JSONEncoder().encode(oversized)
+        defaults.set(data, forKey: AppSettings.Keys.claudeUsageAccounts)
+
+        let settings = AppSettings(defaults: defaults)
+        #expect(settings.claudeUsageAccounts.count == ClaudeUsageAccountSettings.slotCount)
+        #expect(settings.claudeUsageAccounts.map(\.id) == Array(0..<ClaudeUsageAccountSettings.slotCount))
+        #expect(settings.claudeUsageAccounts.map(\.displayName) == ["Slot0", "Slot1", "Slot2"])
+    }
+
+    @Test func undersizedClaudeUsageAccountsArrayIsPaddedWithDefaults() throws {
+        let defaults = makeDefaults()
+        let undersized = [ClaudeUsageAccountSettings(id: 0, displayName: "Only")]
+        let data = try JSONEncoder().encode(undersized)
+        defaults.set(data, forKey: AppSettings.Keys.claudeUsageAccounts)
+
+        let settings = AppSettings(defaults: defaults)
+        #expect(settings.claudeUsageAccounts.count == ClaudeUsageAccountSettings.slotCount)
+        #expect(settings.claudeUsageAccounts.map(\.id) == Array(0..<ClaudeUsageAccountSettings.slotCount))
+        #expect(settings.claudeUsageAccounts[0].displayName == "Only")
+        #expect(settings.claudeUsageAccounts[1].enabled == false)
+        #expect(settings.claudeUsageAccounts[2].enabled == false)
     }
 }
