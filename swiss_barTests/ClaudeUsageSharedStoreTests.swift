@@ -9,10 +9,8 @@ import Testing
 
 struct ClaudeUsageSharedStoreTests {
 
-    /// Fresh, isolated temp directory per test - real App Group container resolution
-    /// (`containerURL(forSecurityApplicationGroupIdentifier:)`) requires entitlements the test
-    /// host never has (both ci.yml and release.yml run tests with CODE_SIGNING_ALLOWED=NO), so
-    /// every test must inject its own root rather than relying on the default.
+    /// Fresh, isolated temp directory per test, so tests never touch the real user's
+    /// `~/Library/Application Support/` (mirrors `ClipboardHistoryPersistence`'s test rationale).
     private func makeRoot() -> URL {
         FileManager.default.temporaryDirectory.appendingPathComponent("ClaudeUsageSharedStoreTests-\(UUID().uuidString)")
     }
@@ -26,8 +24,20 @@ struct ClaudeUsageSharedStoreTests {
         )
     }
 
-    @Test func readAllOnMissingContainerReturnsEmpty() {
+    @Test func readAllOnMissingFileReturnsEmpty() {
         let store = ClaudeUsageSharedStore(rootDirectory: makeRoot())
+        #expect(store.readAll().isEmpty)
+    }
+
+    /// Guards the staged error handling in `readAll()` - a corrupt/partial file (e.g. a concurrent
+    /// read racing an in-progress write, or a schema mismatch) must degrade to "no data" rather
+    /// than crash the widget extension.
+    @Test func readAllOnCorruptFileReturnsEmpty() throws {
+        let root = makeRoot()
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try Data("not valid json".utf8).write(to: root.appendingPathComponent("claude-usage-widget-data.json"))
+
+        let store = ClaudeUsageSharedStore(rootDirectory: root)
         #expect(store.readAll().isEmpty)
     }
 
@@ -63,6 +73,18 @@ struct ClaudeUsageSharedStoreTests {
         #expect(all.count == 2)
         #expect(all.contains(updated))
         #expect(all.contains(other))
+    }
+
+    /// Guards the path shape (`~/Library/Application Support/<bundle-id>/ClaudeUsage`) that
+    /// `swiss_barWidgets.entitlements`'s `home-relative-path` temporary exception is keyed to -
+    /// this test process is unsandboxed (like the real host app), so it can't reproduce the
+    /// sandbox-container-redirection bug this path computation was written to avoid, but it does
+    /// catch an accidental reversion to a different directory shape.
+    @Test func defaultRootDirectoryIsApplicationSupportSlashBundleIDSlashClaudeUsage() {
+        let url = ClaudeUsageSharedStore.defaultRootDirectory
+        #expect(url.lastPathComponent == "ClaudeUsage")
+        #expect(url.deletingLastPathComponent().lastPathComponent.hasPrefix("com.MBI.swiss-bar"))
+        #expect(url.path.contains("/Library/Application Support/"))
     }
 
     @Test func removeSlotDropsOnlyThatSlot() {

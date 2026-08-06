@@ -28,7 +28,7 @@ final class ClaudeUsageMonitor: ObservableObject {
     private var timer: Timer?
     private var initialDelayTask: Task<Void, Never>?
     private var cancellables: Set<AnyCancellable> = []
-    /// Skips the App Group write + `WidgetCenter` reload when nothing a widget would actually
+    /// Skips the shared-store write + `WidgetCenter` reload when nothing a widget would actually
     /// display has changed - a poll that reparses to an identical snapshot (the common case at a
     /// 5-minute cadence) must not count against WidgetKit's reload budget. Mirrors
     /// `ClaudeUsageMenuBarImageRenderer.lastRenderKey`.

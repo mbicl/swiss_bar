@@ -18,13 +18,22 @@ struct ClaudeUsageEntry: TimelineEntry {
 ///
 /// This widget never polls the Claude CLI itself (sandboxed extensions can't reliably spawn it);
 /// it only renders whatever `ClaudeUsageMonitor` (running in the host app) last wrote to the App
-/// Group container for this slot. Timeline policy is `.never` - `ClaudeUsageMonitor` pushes fresh
-/// data via `WidgetCenter.reloadTimelines(ofKind:)` after every poll that actually changed
-/// something, and a periodic reload here would just re-render unchanged data against WidgetKit's
-/// reload budget for no benefit. Staleness is still visible with zero reloads because
+/// Group container for this slot. `ClaudeUsageMonitor` pushes fresh data via
+/// `WidgetCenter.reloadTimelines(ofKind:)` after every poll that actually changed something, so
+/// that's the fast path for updates. Timeline policy is `.after(_:)` rather than `.never`, though,
+/// as a self-healing fallback: a push can go undelivered (the widget added before the first poll
+/// lands, the host app not running at poll time, the extension process having been evicted) with
+/// no way to recover on its own under `.never` - `.after` makes WidgetKit itself re-invoke this
+/// provider on a bounded cadence regardless, so a missed push heals within one cycle instead of
+/// leaving the widget stuck indefinitely. Staleness is still visible between refreshes because
 /// `ClaudeUsageWidgetView` shows `payload.lastUpdated` with `Text(_:style: .relative)`, which
 /// self-updates.
 struct ClaudeUsageTimelineProvider: TimelineProvider {
+    /// Bounds worst-case staleness when a `reloadTimelines` push is missed - well above
+    /// `ClaudeUsageMonitor`'s 5-minute poll interval so this scheduled pull doesn't add
+    /// meaningful WidgetKit refresh pressure on top of the push path.
+    private static let fallbackRefreshInterval: TimeInterval = 15 * 60
+
     let accountID: Int
 
     func placeholder(in context: Context) -> ClaudeUsageEntry {
@@ -38,7 +47,8 @@ struct ClaudeUsageTimelineProvider: TimelineProvider {
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<ClaudeUsageEntry>) -> Void) {
-        completion(Timeline(entries: [currentEntry()], policy: .never))
+        let nextRefresh = Date().addingTimeInterval(Self.fallbackRefreshInterval)
+        completion(Timeline(entries: [currentEntry()], policy: .after(nextRefresh)))
     }
 
     private func currentEntry() -> ClaudeUsageEntry {

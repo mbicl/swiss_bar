@@ -6,9 +6,9 @@
 import Foundation
 import os
 
-/// One account slot's data as handed across the App Group boundary to `swiss_barWidgets` -
-/// mirrors `ClaudeUsageAccountSettings` + `ClaudeUsageMonitor.snapshot`, but only what a widget
-/// needs to render (no `cliCommand`, `menuBarStyle`, etc).
+/// One account slot's data as handed across to `swiss_barWidgets` - mirrors
+/// `ClaudeUsageAccountSettings` + `ClaudeUsageMonitor.snapshot`, but only what a widget needs to
+/// render (no `cliCommand`, `menuBarStyle`, etc).
 struct ClaudeUsageWidgetAccountPayload: Codable, Identifiable, Equatable {
     let id: Int
     let displayName: String
@@ -17,33 +17,26 @@ struct ClaudeUsageWidgetAccountPayload: Codable, Identifiable, Equatable {
 }
 
 /// Disk I/O for the JSON file `swiss_barWidgets` reads to render its timeline entries - the
-/// App Group equivalent of `ClipboardHistoryPersistence`. Root directory is injectable for the
-/// same reason: both `ci.yml` and `release.yml` run `xcodebuild test` with
-/// `CODE_SIGNING_ALLOWED=NO`, so the test host has no entitlements and
-/// `containerURL(forSecurityApplicationGroupIdentifier:)` returns `nil` there - tests must never
-/// depend on it resolving.
+/// cross-process equivalent of `ClipboardHistoryPersistence`. Root directory is injectable so
+/// tests never touch the real user's Application Support folder.
 ///
-/// Deliberately a plain JSON file rather than `UserDefaults(suiteName:)` - `containerURL` is the
-/// documented mechanism for cross-process sharing regardless of sandbox state on either side
-/// (this app is unsandboxed, the widget extension is sandboxed), and a plain file is trivially
-/// inspectable from Terminal while debugging.
+/// A plain file under `~/Library/Application Support/`, not an App Group container -
+/// `containerURL(forSecurityApplicationGroupIdentifier:)` was tried first (the documented
+/// mechanism for exactly this unsandboxed-app + sandboxed-extension pairing), and it looked
+/// right on paper: both targets' entitlements listed the group, `codesign -d --entitlements`
+/// confirmed it was embedded and properly provisioned, and the unsandboxed app could write the
+/// container fine. But verified on-device (macOS 26.5.2), the sandboxed widget's own reads of a
+/// file the unsandboxed app had written into that same container failed with a sandbox-layer
+/// "you don't have permission to view it" - not a POSIX permission problem (the file was
+/// world-readable, same UID on both sides) but Seatbelt declining to honor the App Group grant
+/// for a file it didn't see a sandboxed process create. That's a real, reproducible limitation
+/// of mixing an unsandboxed writer with a sandboxed reader on an App Group container on this OS
+/// version, not a misconfiguration - so this store sidesteps App Group semantics entirely.
+/// `swiss_barWidgets.entitlements` instead grants the widget direct read access to this
+/// directory via `com.apple.security.temporary-exception.files.home-relative-path.read-only`, a
+/// blunter sandbox rule keyed on path rather than App Group container provenance.
 struct ClaudeUsageSharedStore {
     private static let logger = Logger(subsystem: "com.MBI.swiss-bar", category: "ClaudeUsageSharedStore")
-
-    /// Keyed by bundle identifier so a `-dev` (Debug) build and the Release build never share
-    /// (and one can never clobber the other's) widget data - mirrors
-    /// `ClipboardHistoryPersistence.defaultRootDirectory`'s existing "keyed by bundle ID so
-    /// swiss_bar_dev and release never share or clobber each other's" rationale, which this
-    /// should have followed from the start. Both group IDs are listed in both targets'
-    /// `.entitlements` files (harmless for a build to be entitled for a group it doesn't use).
-    /// `Bundle.main` inside the widget extension is the widget's *own* bundle
-    /// (`com.MBI.swiss-bar(-dev).Widgets`), not the host app's - but that's fine here, since both
-    /// the app's and the widget's Debug bundle IDs share the same "-dev" suffix convention, so a
-    /// plain substring check on whichever target's own `Bundle.main` gives the right answer in
-    /// both places.
-    static var appGroupID: String {
-        (Bundle.main.bundleIdentifier ?? "").contains("-dev") ? "group.com.MBI.swiss-bar-dev" : "group.com.MBI.swiss-bar"
-    }
 
     /// Single source of truth for the per-slot `kind:` both `ClaudeUsageMonitor`'s
     /// `WidgetCenter.reloadTimelines(ofKind:)` call and each slot's `Widget` declaration use -
@@ -57,34 +50,75 @@ struct ClaudeUsageSharedStore {
     /// `swiss_barApp.swift` already uses for the menu bar's `MenuBarExtra` scenes.
     static func widgetKind(forSlot id: Int) -> String { "ClaudeUsageWidgetSlot\(id)" }
 
-    let rootDirectory: URL?
+    let rootDirectory: URL
 
-    static var defaultRootDirectory: URL? {
-        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID)
+    /// The *host app's* bundle ID, keyed the same "-dev" way `ClipboardHistoryPersistence`
+    /// already uses - not `Bundle.main.bundleIdentifier` directly, since inside
+    /// `swiss_barWidgets` that resolves to the widget's *own* bundle
+    /// (`com.MBI.swiss-bar(-dev).Widgets`), not the host app's, and both sides must agree on one
+    /// path regardless of which of them is asking. Both the app's and the widget's Debug bundle
+    /// IDs share the "-dev" suffix convention, so a plain substring check on whichever target's
+    /// own `Bundle.main` gives the right answer from either process.
+    private static var hostAppBundleID: String {
+        (Bundle.main.bundleIdentifier ?? "").contains("-dev") ? "com.MBI.swiss-bar-dev" : "com.MBI.swiss-bar"
     }
 
-    init(rootDirectory: URL? = ClaudeUsageSharedStore.defaultRootDirectory) {
+    /// The real, non-sandbox-redirected home directory, from the user database rather than
+    /// `FileManager.default.homeDirectoryForCurrentUser`/`NSHomeDirectory()` - both of those
+    /// resolve to the sandboxed widget's *container* home
+    /// (`~/Library/Containers/com.MBI.swiss-bar(-dev).Widgets/Data`) when called from inside it,
+    /// not the real `~/`. `home-relative-path` temporary-exception entitlements are specifically
+    /// meant to be resolved against the real home directory (that's the whole point - reaching
+    /// outside the container to one specific real-world path), so this must not go through the
+    /// sandbox-aware APIs or the widget and the host app would each compute a different path.
+    private static var realHomeDirectory: URL {
+        guard let pw = getpwuid(getuid()) else { return FileManager.default.homeDirectoryForCurrentUser }
+        return URL(fileURLWithPath: String(cString: pw.pointee.pw_dir))
+    }
+
+    /// `~/Library/Application Support/<host-app-bundle-id>/ClaudeUsage/` - keyed by bundle ID so
+    /// `swiss_bar_dev` and the Release build never share (and one can never clobber the other's)
+    /// widget data, mirroring `ClipboardHistoryPersistence.defaultRootDirectory`. Must stay in
+    /// sync with the literal paths listed in `swiss_barWidgets.entitlements`'s
+    /// `home-relative-path` temporary exception.
+    static var defaultRootDirectory: URL {
+        realHomeDirectory
+            .appendingPathComponent("Library")
+            .appendingPathComponent("Application Support")
+            .appendingPathComponent(hostAppBundleID)
+            .appendingPathComponent("ClaudeUsage")
+    }
+
+    init(rootDirectory: URL = ClaudeUsageSharedStore.defaultRootDirectory) {
         self.rootDirectory = rootDirectory
     }
 
-    private var fileURL: URL? { rootDirectory?.appendingPathComponent("claude-usage-widget-data.json") }
+    private var fileURL: URL { rootDirectory.appendingPathComponent("claude-usage-widget-data.json") }
 
+    /// Staged (rather than one collapsed `try?`) so a failure here - most importantly when called
+    /// from inside the sandboxed widget extension, where a sandbox read denial is a real
+    /// possibility distinct from "no data written yet" - is diagnosable via `log stream` instead
+    /// of silently indistinguishable from the empty-state case.
     func readAll() -> [ClaudeUsageWidgetAccountPayload] {
-        guard let fileURL, let data = try? Data(contentsOf: fileURL),
-              let payloads = try? JSONDecoder().decode([ClaudeUsageWidgetAccountPayload].self, from: data) else {
+        let data: Data
+        do {
+            data = try Data(contentsOf: fileURL)
+        } catch {
+            Self.logger.error("readAll: failed to read \(fileURL.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
             return []
         }
-        return payloads
+        do {
+            return try JSONDecoder().decode([ClaudeUsageWidgetAccountPayload].self, from: data)
+        } catch {
+            Self.logger.error("readAll: failed to decode \(fileURL.path, privacy: .public): \(error.localizedDescription, privacy: .public)")
+            return []
+        }
     }
 
     /// Atomic write: encode fully in memory, write to a temp file, then replace the target file in
     /// one filesystem operation, so a crash/kill mid-save (or the widget reading concurrently)
     /// never sees a half-written file.
     func write(_ payloads: [ClaudeUsageWidgetAccountPayload]) {
-        guard let rootDirectory, let fileURL else {
-            Self.logger.error("containerURL(forSecurityApplicationGroupIdentifier:) returned nil - App Group entitlement not effective")
-            return
-        }
         do {
             try FileManager.default.createDirectory(at: rootDirectory, withIntermediateDirectories: true)
             let data = try JSONEncoder().encode(payloads)

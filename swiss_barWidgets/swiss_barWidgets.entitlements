@@ -4,10 +4,10 @@
 <dict>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
-	<key>com.apple.security.application-groups</key>
+	<key>com.apple.security.temporary-exception.files.home-relative-path.read-only</key>
 	<array>
-		<string>group.com.MBI.swiss-bar</string>
-		<string>group.com.MBI.swiss-bar-dev</string>
+		<string>/Library/Application Support/com.MBI.swiss-bar/ClaudeUsage/</string>
+		<string>/Library/Application Support/com.MBI.swiss-bar-dev/ClaudeUsage/</string>
 	</array>
 </dict>
 </plist>
